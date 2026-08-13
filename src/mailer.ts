@@ -46,6 +46,16 @@ function escapeHtml(value: string | undefined): string {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] || character);
 }
 
+function configuredUrl(name: string, fallback: string): string {
+  const value = (process.env[name] || fallback).trim();
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function formatDuration(minutes: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
@@ -58,8 +68,12 @@ export function buildNotification(context: NotificationContext): { subject: stri
   const actionLabel = context.action === 'check-in' ? 'Punch-in' : 'Punch-out';
   const observedIn = context.record?.checkIn || 'Not observed';
   const observedOut = context.record?.checkOut || 'Not observed';
+  const rigoUrl = configuredUrl('RIGOHR_URL', 'https://app.rigohr.com/hr');
+  const projectUrl = configuredUrl('PROJECT_URL', 'http://localhost:4317');
   const subject = `[RigoHR] ${statusLabel(context.state)}: ${actionLabel} · ${context.date}`;
   const fields = [
+    `RigoHR website: ${rigoUrl}`,
+    `Attendance project: ${projectUrl}`,
     `Result: ${statusLabel(context.state)}`,
     `Action: ${actionLabel}`,
     `Date: ${context.date}`,
@@ -77,7 +91,7 @@ export function buildNotification(context: NotificationContext): { subject: stri
     context.screenshotPaths?.length ? `Evidence: ${context.screenshotPaths.join(', ')}` : '',
   ].filter(Boolean);
   const text = `RigoHR Attendance Notification\n\n${fields.join('\n')}`;
-  const html = `<h2>RigoHR Attendance · ${escapeHtml(statusLabel(context.state))}</h2><table>${fields.map((field) => { const separator = field.indexOf(':'); const key = separator > -1 ? field.slice(0, separator) : 'Details'; const value = separator > -1 ? field.slice(separator + 1).trim() : field; return `<tr><th style="text-align:left;padding:5px 12px 5px 0">${escapeHtml(key)}</th><td style="padding:5px 0">${escapeHtml(value)}</td></tr>`; }).join('')}</table>`;
+  const html = `<h2>RigoHR Attendance · ${escapeHtml(statusLabel(context.state))}</h2><table>${fields.map((field) => { const separator = field.indexOf(':'); const key = separator > -1 ? field.slice(0, separator) : 'Details'; const value = separator > -1 ? field.slice(separator + 1).trim() : field; const content = key === 'RigoHR website' || key === 'Attendance project' ? `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>` : escapeHtml(value); return `<tr><th style="text-align:left;padding:5px 12px 5px 0">${escapeHtml(key)}</th><td style="padding:5px 0">${content}</td></tr>`; }).join('')}</table>`;
   return { subject, text, html };
 }
 
@@ -98,13 +112,15 @@ export async function sendTestEmail(recipientAddresses: string[] = []): Promise<
   if (!configured(recipientAddresses)) return { sent: false };
   const transport = createTransport();
   const to = recipientAddresses.map((recipient) => recipient.trim());
+  const rigoUrl = configuredUrl('RIGOHR_URL', 'https://app.rigohr.com/hr');
+  const projectUrl = configuredUrl('PROJECT_URL', 'http://localhost:4317');
   await transport.sendMail({
     from: required('SMTP_FROM'),
     to,
     replyTo: process.env.SMTP_REPLY_TO || undefined,
     subject: '[RigoHR] Test email · Attendance notifications',
-    text: `RigoHR Attendance test email\n\nThis confirms that attendance notifications can be delivered to: ${to.join(', ')}.\n\nNo attendance action was performed.`,
-    html: `<h2>RigoHR Attendance · Test email</h2><p>This confirms that attendance notifications can be delivered to:</p><p>${to.map(escapeHtml).join('<br>')}</p><p><strong>No attendance action was performed.</strong></p>`,
+    text: `RigoHR Attendance test email\n\nRigoHR website: ${rigoUrl}\nAttendance project: ${projectUrl}\n\nThis confirms that attendance notifications can be delivered to: ${to.join(', ')}.\n\nNo attendance action was performed.`,
+    html: `<h2>RigoHR Attendance · Test email</h2><p><a href="${escapeHtml(rigoUrl)}">RigoHR website</a></p><p><a href="${escapeHtml(projectUrl)}">Attendance project</a></p><p>This confirms that attendance notifications can be delivered to:</p><p>${to.map(escapeHtml).join('<br>')}</p><p><strong>No attendance action was performed.</strong></p>`,
   });
   return { sent: true, recipients: to };
 }

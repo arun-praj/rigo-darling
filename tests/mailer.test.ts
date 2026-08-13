@@ -8,6 +8,10 @@ describe('attendance email notifications', () => {
     expect(message.text).toContain('Configured punch-in window: 12:30–13:45 Nepal Time');
     expect(message.text).toContain('Configured punch-out window: 22:00–23:00 Nepal Time');
     expect(message.text).toContain('Observed punch-in: 1:02p');
+    expect(message.text).toContain('RigoHR website: https://app.rigohr.com/hr');
+    expect(message.text).toContain('Attendance project: http://localhost:4317');
+    expect(message.html).toContain('href="https://app.rigohr.com/hr"');
+    expect(message.html).toContain('href="http://localhost:4317"');
     expect(message.html).toContain('weekly thursday');
   });
 
