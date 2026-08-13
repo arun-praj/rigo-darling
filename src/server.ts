@@ -214,30 +214,6 @@ app.get('/api/attendance', (req, res) => {
   res.json(store.attendance.filter((record) => !date || record.date === date));
 });
 
-app.put('/api/attendance/:date', (req, res) => {
-  try {
-    const date = req.params.date;
-    if (!validDate(date)) throw new Error('Attendance date must use YYYY-MM-DD.');
-    const today = localParts(new Date(), store.config.timezone).date;
-    if (date !== today) throw new Error('Only today’s attendance can be manually edited.');
-    const time = (value: unknown, label: string): string | undefined => {
-      if (value === undefined) return undefined;
-      if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) throw new Error(`${label} must use HH:MM.`);
-      const [hour, minute] = value.split(':').map(Number);
-      if (hour > 23 || minute > 59) throw new Error(`${label} must be a valid time.`);
-      return value;
-    };
-    const checkIn = time(req.body?.checkIn, 'Punch-in');
-    const checkOut = time(req.body?.checkOut, 'Punch-out');
-    if (checkIn === undefined && checkOut === undefined) throw new Error('Provide a punch-in or punch-out time.');
-    const updated = store.updateAttendance(date, { checkIn, checkOut });
-    store.addLog({ id: makeId('log'), timestamp: updated.observedAt || new Date().toISOString(), date, status: 'info', errorCategory: 'manual_attendance_edit', message: `Manual attendance record updated: punch-in ${updated.checkIn || 'not recorded'}, punch-out ${updated.checkOut || 'not recorded'}.`, observedCheckIn: updated.checkIn, observedCheckOut: updated.checkOut });
-    res.json({ date, record: updated, stored: true, storedAt: updated.observedAt });
-  } catch (error) {
-    res.status(400).json({ error: safeError(error) });
-  }
-});
-
 app.post('/api/attendance/check-live', async (_req, res) => {
   const checkedAt = new Date();
   const date = localParts(checkedAt, store.config.timezone).date;
