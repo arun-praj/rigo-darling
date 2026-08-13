@@ -7,19 +7,13 @@ ENV NODE_ENV=production \
     RIGOHR_DB_PATH=/app/data/rigohr.sqlite
 
 COPY package*.json ./
-RUN npm install --global npm@10.9.2 --no-audit --no-fund \
-    && npm config set registry https://registry.npmjs.org/ \
-    && npm config set maxsockets 1 \
-    && npm config set fund false \
-    && npm config set audit false \
-    && npm config set update-notifier false \
-    && npm ci --no-audit --no-fund
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
 RUN npm run build
-RUN npm prune --omit=dev --no-audit --no-fund
+RUN npm prune --omit=dev
 
 RUN mkdir -p /app/data /app/.browser-profile \
     && chown -R pwuser:pwuser /app
