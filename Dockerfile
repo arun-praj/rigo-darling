@@ -4,10 +4,11 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     BROWSER_HEADLESS=true \
-    RIGOHR_DB_PATH=/app/data/rigohr.sqlite
+    RIGOHR_DB_PATH=/app/data/rigohr.sqlite \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src ./src
