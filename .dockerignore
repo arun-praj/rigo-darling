@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.browser-profile
+data
+dist
+node_modules
+*.log
+.DS_Store
+README.md
+tests

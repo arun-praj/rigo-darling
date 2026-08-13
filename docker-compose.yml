@@ -1,0 +1,31 @@
+services:
+  rigo-darling:
+    build:
+      context: .
+    container_name: rigo-darling
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      BROWSER_HEADLESS: "true"
+      RIGOHR_DB_PATH: /app/data/rigohr.sqlite
+      RIGOHR_BROWSER_PROFILE: /app/.browser-profile
+    ports:
+      - "4317:4317"
+    volumes:
+      - rigo_data:/app/data
+      - rigo_browser_profile:/app/.browser-profile
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4317/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  rigo_data:
+  rigo_browser_profile:

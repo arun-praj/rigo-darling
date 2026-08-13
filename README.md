@@ -27,6 +27,22 @@ npm run dev
 
 Use `npm run dev:once` when you want a single non-watching server process.
 
+### Docker Compose production run
+
+On a Linux host with Docker Compose installed:
+
+```sh
+cp .env.example .env
+# Edit .env and set production credentials and notification settings.
+docker compose up -d --build
+docker compose logs -f
+```
+
+The application is exposed on port `4317`. SQLite data and the persistent
+headless Chromium profile are stored in named Docker volumes. Stop it with
+`docker compose down`; use `docker compose down -v` only if you intentionally
+want to delete those volumes and all stored application data.
+
 Copy `.env.example` when setting up another machine. Keep `.env` local. The first SQLite startup imports the existing `data/state.json` once; the JSON file is retained as a recoverable migration source.
 
 ## Authentication
