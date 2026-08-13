@@ -25,6 +25,8 @@ npm run dev
 
 `npm run dev` uses `tsx watch`, so the server automatically restarts when TypeScript source files change. Open [http://localhost:4317](http://localhost:4317). The browser opens in headed mode with a persistent local profile at `.browser-profile/`. The first run uses the values in `.env`; later runs reuse the browser session when available.
 
+Only one server instance may own the scheduler and browser profile at a time. The process lock is stored at `data/rigohr-attendance.lock` by default (override with `RIGOHR_INSTANCE_LOCK`). Headless runs must use the same authenticated persistent profile or provide `RIGOHR_USERNAME` and `RIGOHR_PASSWORD` in the process environment.
+
 Use `npm run dev:once` when you want a single non-watching server process.
 
 ### Docker Compose production run

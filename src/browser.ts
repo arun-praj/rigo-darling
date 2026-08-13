@@ -13,6 +13,8 @@ const LOGIN_ORIGIN = 'https://login.app.rigohr.com';
 const allowedAppPaths = new Set(['/hr', '/hr/clock/in', '/hr/employee', '/login']);
 const PAGE_SETTLE_MIN_MS = 1_000;
 const PAGE_SETTLE_MAX_MS = 2_000;
+const PAGE_STATE_TIMEOUT_MS = 20_000;
+const PAGE_STATE_POLL_MS = 250;
 
 function pageSettleDelayMs(): number {
   return PAGE_SETTLE_MIN_MS + Math.floor(Math.random() * (PAGE_SETTLE_MAX_MS - PAGE_SETTLE_MIN_MS + 1));
@@ -25,6 +27,10 @@ export function isBrowserClosedError(error: unknown): boolean {
 
 export function isUncertainPunchError(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && (error as PunchAwareError).uncertainPunch) || isBrowserClosedError(error);
+}
+
+export function hasAttendanceHomeText(value: string): boolean {
+  return /\bmy\s+time\s+and\s+attendance\b/i.test(value);
 }
 
 export function isAllowedRigoUrl(value: string): boolean {
@@ -155,14 +161,30 @@ export class RigoBrowser {
   }
 
   private async waitForPostLoginState(page: Page): Promise<void> {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    const deadline = Date.now() + PAGE_STATE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
       if (await this.isAttendanceHome(page) || await this.isClockLanding(page)) return;
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(PAGE_STATE_POLL_MS);
     }
   }
 
   private async isAttendanceHome(page: Page): Promise<boolean> {
-    return await page.getByRole('heading', { name: /my time and attendance/i }).count() > 0;
+    const heading = page.locator('h1, h2, h3').filter({ hasText: /my\s+time\s+and\s+attendance/i }).first();
+    if (await heading.count() > 0 && await heading.isVisible().catch(() => false)) return true;
+    const bodyText = await page.locator('body').innerText().catch(() => '');
+    return hasAttendanceHomeText(bodyText);
+  }
+
+  private async waitForAttendanceHome(page: Page): Promise<boolean> {
+    const deadline = Date.now() + PAGE_STATE_TIMEOUT_MS;
+    const heading = page.locator('h1, h2, h3').filter({ hasText: /my\s+time\s+and\s+attendance/i }).first();
+    while (Date.now() < deadline) {
+      if (await this.isAttendanceHome(page)) return true;
+      try { await heading.waitFor({ state: 'visible', timeout: PAGE_STATE_POLL_MS }); } catch { /* React may still be committing the dashboard. */ }
+      if (await this.isAttendanceHome(page)) return true;
+      await page.waitForTimeout(PAGE_STATE_POLL_MS);
+    }
+    return false;
   }
 
   private async isClockLanding(page: Page): Promise<boolean> {
@@ -180,15 +202,16 @@ export class RigoBrowser {
   }
 
   private async waitForInitialState(page: Page): Promise<void> {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    const deadline = Date.now() + PAGE_STATE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
       const pathname = new URL(page.url()).pathname;
       const hasLoginControl = await page.getByRole('button', { name: /continue/i }).count() > 0 || await page.getByRole('textbox', { name: /password/i }).count() > 0;
       const hasClockGate = await this.isClockLanding(page);
-      const hasHome = await page.getByRole('heading', { name: /my time and attendance/i }).count() > 0;
+      const hasHome = await this.isAttendanceHome(page);
       if (pathname === '/login' || pathname === '/hr' || pathname === '/hr/clock/in' || pathname === '/hr/employee') {
         if (hasLoginControl || hasClockGate || hasHome || pathname === '/login') return;
       }
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(PAGE_STATE_POLL_MS);
     }
   }
 
@@ -245,7 +268,7 @@ export class RigoBrowser {
       await page.getByRole('button', { name: /login/i }).click();
       await this.waitForPostLoginState(page);
       await this.settlePage(page);
-      if (!(await this.isAttendanceHome(page)) && !(await this.isClockLanding(page))) {
+      if (!(await this.waitForAttendanceHome(page)) && !(await this.isClockLanding(page))) {
         const pathname = new URL(page.url()).pathname;
         const passwordStillVisible = await passwordBox.isVisible().catch(() => false);
         throw new Error(`RigoHR login did not complete; current page is ${pathname}${passwordStillVisible ? ' and the password step is still visible' : ''}.`);
@@ -275,7 +298,7 @@ export class RigoBrowser {
         }
       }
     }
-    if (!action && !(await this.isAttendanceHome(page))) throw new Error(`Unexpected RigoHR state after attendance navigation: ${new URL(page.url()).pathname}`);
+    if (!action && !(await this.waitForAttendanceHome(page))) throw new Error(`Unexpected RigoHR state after attendance navigation: ${new URL(page.url()).pathname}`);
     await this.dismissOptionalModal(page, evidenceLabel, screenshots);
     const afterLogin = await this.capture(`${evidenceLabel}-05-home-before-action`);
     if (afterLogin) screenshots.push(afterLogin);
