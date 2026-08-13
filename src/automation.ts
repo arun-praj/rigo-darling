@@ -12,6 +12,8 @@ const displayAction = (action: ActionType): string => action === 'check-in' ? 'P
 let schedulerStartedAt: Date | undefined;
 let schedulerLastTickAt: Date | undefined;
 let schedulerLastError = false;
+let schedulerTickInProgress = false;
+const executingActionIds = new Set<string>();
 
 export function schedulerStatus(now = new Date()): { active: boolean; state: 'active' | 'starting' | 'inactive' | 'error'; startedAt?: string; lastTickAt?: string; intervalMs: number } {
   if (!schedulerStartedAt) return { active: false, state: 'inactive', intervalMs: SCHEDULER_INTERVAL_MS };
@@ -49,7 +51,7 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   const inPreparationWindow = isWithinLeadWindow(parts.time, targetWindow.start, AUTO_LEAD_MINUTES);
   const punchWindowOpen = inWindow(parts.time, targetWindow);
   if (!inPreparationWindow && !punchWindowOpen) return undefined;
-  const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped'].includes(candidate.state));
+  const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return undefined;
   if (action === 'check-out') {
     const verifiedCheckIn = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === 'check-in' && candidate.checkIn && ['verified', 'skipped'].includes(candidate.state));
@@ -95,7 +97,7 @@ function eligibilityReason(action: ActionType, now: Date): string {
     ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
     : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };
   if (!isWithinLeadWindow(parts.time, targetWindow.start, AUTO_LEAD_MINUTES) && !inWindow(parts.time, targetWindow)) return `${displayAction(action)}: current time ${parts.time} is outside the 15-minute preparation window before ${targetWindow.start}.`;
-  const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped'].includes(candidate.state));
+  const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return `${displayAction(action)}: an action is already ${existing.state} for today.`;
   return `${displayAction(action)}: eligible for automatic scheduling; punch is planned for ${targetWindow.start}.`;
 }
@@ -134,7 +136,7 @@ export async function preview(now = new Date()): Promise<{ plans: PlannedAction[
   return { plans, state: plans.length ? 'scheduled' : 'outside_window_or_already_planned' };
 }
 
-export async function executeAction(id: string): Promise<PlannedAction> {
+async function executeActionInternal(id: string): Promise<PlannedAction> {
   const action = store.actions.find((candidate) => candidate.id === id);
   if (!action) throw new Error('Action was not found.');
   if (action.state !== 'scheduled') {
@@ -235,6 +237,18 @@ export async function executeAction(id: string): Promise<PlannedAction> {
   }
 }
 
+export async function executeAction(id: string): Promise<PlannedAction> {
+  const action = store.actions.find((candidate) => candidate.id === id);
+  if (!action) throw new Error('Action was not found.');
+  if (executingActionIds.has(id)) return action;
+  executingActionIds.add(id);
+  try {
+    return await executeActionInternal(id);
+  } finally {
+    executingActionIds.delete(id);
+  }
+}
+
 export function cancelAction(id: string): PlannedAction {
   const action = store.actions.find((candidate) => candidate.id === id);
   if (!action) throw new Error('Action was not found.');
@@ -256,6 +270,8 @@ function to24Hour(value: string): string {
 }
 
 async function schedulerTick(): Promise<void> {
+  if (schedulerTickInProgress) return;
+  schedulerTickInProgress = true;
   schedulerLastTickAt = new Date();
   schedulerLastError = false;
   try {
@@ -268,6 +284,8 @@ async function schedulerTick(): Promise<void> {
     schedulerLastError = true;
     const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
     log(error instanceof Error ? error.message : 'Scheduler error.', { status: 'failed', errorCategory: 'scheduler', screenshotPath: failureScreenshots[0]?.path, screenshots: failureScreenshots.length ? failureScreenshots : undefined });
+  } finally {
+    schedulerTickInProgress = false;
   }
 }
 
