@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { evidenceStore } from './evidence.js';
-import type { AttendanceRecord } from './types.js';
+import type { ActionType, AttendanceRecord } from './types.js';
 
 type Evidence = { label: string; path: string };
+type FailureAwareError = Error & { failureEvidence?: Evidence[] };
 
 const APP_ORIGIN = 'https://app.rigohr.com';
 const LOGIN_ORIGIN = 'https://login.app.rigohr.com';
@@ -28,6 +29,33 @@ export class RigoBrowser {
   private context?: BrowserContext;
   private page?: Page;
   private navigationGuardAttached = false;
+  private operationQueue: Promise<void> = Promise.resolve();
+  private failureEvidence: Evidence[] = [];
+
+  private async runExclusive<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.operationQueue;
+    let release!: () => void;
+    this.operationQueue = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
+
+  takeFailureEvidence(): Evidence[] {
+    const evidence = [...this.failureEvidence];
+    this.failureEvidence = [];
+    return evidence;
+  }
+
+  failureEvidenceFrom(error: unknown): Evidence[] {
+    if (error && typeof error === 'object' && Array.isArray((error as FailureAwareError).failureEvidence)) {
+      return [...((error as FailureAwareError).failureEvidence || [])];
+    }
+    return this.takeFailureEvidence();
+  }
 
   async close(): Promise<void> {
     const context = this.context;
@@ -100,18 +128,34 @@ export class RigoBrowser {
 
   private async waitForPostLoginState(page: Page): Promise<void> {
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const pathname = new URL(page.url()).pathname;
-      if (pathname === '/hr/clock/in' && await page.getByText(/skip clock[- ]?in and go to (your )?hr/i).count() > 0) return;
-      if (pathname === '/hr/employee' && await page.getByRole('heading', { name: /my time and attendance/i }).count() > 0) return;
+      if (await this.isAttendanceHome(page) || await this.isClockLanding(page)) return;
       await page.waitForTimeout(500);
     }
+  }
+
+  private async isAttendanceHome(page: Page): Promise<boolean> {
+    return await page.getByRole('heading', { name: /my time and attendance/i }).count() > 0;
+  }
+
+  private async isClockLanding(page: Page): Promise<boolean> {
+    const skipToHr = await this.skipToHrControl(page).count() > 0;
+    const clockControl = await this.clockActionControl(page, 'check-in').count() > 0 || await this.clockActionControl(page, 'check-out').count() > 0;
+    return skipToHr || clockControl;
+  }
+
+  private skipToHrControl(page: Page): ReturnType<Page['locator']> {
+    return page.locator('a, button').filter({ hasText: /skip[\s\S]*go to[\s\S]*hr/i }).first();
+  }
+
+  private clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
+    return page.locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? 'clock[- ]?in' : 'clock[- ]?out', 'i') }).first();
   }
 
   private async waitForInitialState(page: Page): Promise<void> {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const pathname = new URL(page.url()).pathname;
       const hasLoginControl = await page.getByRole('button', { name: /continue/i }).count() > 0 || await page.getByRole('textbox', { name: /password/i }).count() > 0;
-      const hasClockGate = await page.getByText(/skip clock[- ]?in and go to (your )?hr/i).count() > 0;
+      const hasClockGate = await this.isClockLanding(page);
       const hasHome = await page.getByRole('heading', { name: /my time and attendance/i }).count() > 0;
       if (pathname === '/login' || pathname === '/hr' || pathname === '/hr/clock/in' || pathname === '/hr/employee') {
         if (hasLoginControl || hasClockGate || hasHome || pathname === '/login') return;
@@ -141,7 +185,7 @@ export class RigoBrowser {
     }
   }
 
-  async ensureAuthenticated(evidenceLabel = 'session'): Promise<{ page: Page; screenshots: Evidence[] }> {
+  async ensureAuthenticated(evidenceLabel = 'session', action?: 'check-in' | 'check-out'): Promise<{ page: Page; screenshots: Evidence[] }> {
     const page = await this.openHome();
     const screenshots: Evidence[] = [];
     await this.waitForInitialState(page);
@@ -173,31 +217,45 @@ export class RigoBrowser {
       await page.getByRole('button', { name: /login/i }).click();
       await this.waitForPostLoginState(page);
       await this.settlePage(page);
-      if (new URL(page.url()).pathname !== '/hr/clock/in' && new URL(page.url()).pathname !== '/hr/employee') {
-        throw new Error('RigoHR login did not complete; the expected post-login page was not reached.');
+      if (!(await this.isAttendanceHome(page)) && !(await this.isClockLanding(page))) {
+        const pathname = new URL(page.url()).pathname;
+        const passwordStillVisible = await passwordBox.isVisible().catch(() => false);
+        throw new Error(`RigoHR login did not complete; current page is ${pathname}${passwordStillVisible ? ' and the password step is still visible' : ''}.`);
       }
     }
     await this.dismissOptionalModal(page, evidenceLabel, screenshots);
-    if (new URL(page.url()).pathname === '/hr/clock/in') {
-      const clockGate = await this.capture(`${evidenceLabel}-03-before-skip-clock-in`);
+    if (!(await this.isAttendanceHome(page))) {
+      const clockGate = await this.capture(`${evidenceLabel}-03-clock-landing-before-action`);
       if (clockGate) screenshots.push(clockGate);
-      const skip = page.getByText(/skip clock[- ]?in and go to (your )?hr/i).first();
-      if (await skip.count() !== 1) throw new Error('Expected “Skip clock-in and go to HR” control was not found.');
-      await this.settlePage(page);
-      await skip.click();
-      await this.waitForPostLoginState(page);
-      await this.settlePage(page);
-      const afterSkip = await this.capture(`${evidenceLabel}-04-after-skip-clock-in`);
-      if (afterSkip) screenshots.push(afterSkip);
+      const actionButton = action ? this.clockActionControl(page, action) : undefined;
+      if (actionButton && await actionButton.count() === 1 && await actionButton.isVisible() && await actionButton.isEnabled()) {
+        // Punch actions can be submitted directly from the clock landing page.
+      } else {
+        const skip = this.skipToHrControl(page);
+        if (await skip.count() > 0) {
+          await this.settlePage(page);
+          await skip.click();
+          await this.waitForPostLoginState(page);
+          await this.settlePage(page);
+          const afterSkip = await this.capture(`${evidenceLabel}-04-after-skip-to-hr`);
+          if (afterSkip) screenshots.push(afterSkip);
+        } else if (!action) {
+          await this.safeGoto(`${APP_ORIGIN}/hr/employee`);
+          await this.waitForPostLoginState(page);
+        } else {
+          throw new Error('RigoHR showed a clock landing page, but no usable clock control or skip-to-HR link was found.');
+        }
+      }
     }
-    if (new URL(page.url()).pathname !== '/hr/employee') throw new Error(`Unexpected RigoHR state: ${new URL(page.url()).pathname}`);
+    if (!action && !(await this.isAttendanceHome(page))) throw new Error(`Unexpected RigoHR state after attendance navigation: ${new URL(page.url()).pathname}`);
     await this.dismissOptionalModal(page, evidenceLabel, screenshots);
     const afterLogin = await this.capture(`${evidenceLabel}-05-home-before-action`);
     if (afterLogin) screenshots.push(afterLogin);
     return { page, screenshots };
   }
 
-  async readAttendance(date: string, evidenceLabel = 'attendance'): Promise<{ record?: AttendanceRecord; pageState: string; url: string; screenshots: Evidence[] }> {
+  private async readAttendanceInternal(date: string, evidenceLabel = 'attendance'): Promise<{ record?: AttendanceRecord; pageState: string; url: string; screenshots: Evidence[] }> {
+    this.failureEvidence = [];
     try {
       const authenticated = await this.ensureAuthenticated(evidenceLabel);
       const page = authenticated.page;
@@ -231,19 +289,30 @@ export class RigoBrowser {
       }, { dayNumber, weekday });
       if (row.rowCount !== 1) return { pageState: `${heading}; ${row.rowCount === 0 ? 'date-row-not-found' : 'date-row-ambiguous'}`, url: page.url(), screenshots };
       return { record: { date, checkIn: row.checkIn, checkOut: row.checkOut }, pageState: `${heading}; date-row-found`, url: page.url(), screenshots };
+    } catch (error) {
+      const failure = await this.capture(`${evidenceLabel}-failure-state`).catch(() => undefined);
+      const evidence = failure ? [failure] : [];
+      this.failureEvidence = evidence;
+      if (error instanceof Error) (error as FailureAwareError).failureEvidence = evidence;
+      throw error;
     } finally {
       await this.close();
     }
   }
 
-  async clickPunch(action: 'check-in' | 'check-out', evidenceLabel = 'punch'): Promise<Evidence[]> {
+  async readAttendance(date: string, evidenceLabel = 'attendance'): Promise<{ record?: AttendanceRecord; pageState: string; url: string; screenshots: Evidence[] }> {
+    return this.runExclusive(() => this.readAttendanceInternal(date, evidenceLabel));
+  }
+
+  private async clickPunchInternal(action: 'check-in' | 'check-out', evidenceLabel = 'punch'): Promise<Evidence[]> {
+    this.failureEvidence = [];
     try {
-      const authenticated = await this.ensureAuthenticated(`${evidenceLabel}-auth`);
+      const authenticated = await this.ensureAuthenticated(`${evidenceLabel}-auth`, action);
       const page = authenticated.page;
       const screenshots = [...authenticated.screenshots];
-      const button = page.getByRole('button', { name: new RegExp(action === 'check-in' ? 'Clock In' : 'Clock Out', 'i') }).first();
+      const button = this.clockActionControl(page, action);
       if (await button.count() !== 1 || !(await button.isVisible()) || !(await button.isEnabled())) {
-        throw new Error(`Expected enabled ${action} control was not found on the dashboard.`);
+        throw new Error(`Expected enabled RigoHR ${action} control was not found.`);
       }
       const beforeClick = await this.capture(`${evidenceLabel}-06-before-${action}`);
       if (beforeClick) screenshots.push(beforeClick);
@@ -257,9 +326,19 @@ export class RigoBrowser {
       const afterRefresh = await this.capture(`${evidenceLabel}-08-after-refresh`);
       if (afterRefresh) screenshots.push(afterRefresh);
       return screenshots;
+    } catch (error) {
+      const failure = await this.capture(`${evidenceLabel}-failure-state`).catch(() => undefined);
+      const evidence = failure ? [failure] : [];
+      this.failureEvidence = evidence;
+      if (error instanceof Error) (error as FailureAwareError).failureEvidence = evidence;
+      throw error;
     } finally {
       await this.close();
     }
+  }
+
+  async clickPunch(action: 'check-in' | 'check-out', evidenceLabel = 'punch'): Promise<Evidence[]> {
+    return this.runExclusive(() => this.clickPunchInternal(action, evidenceLabel));
   }
 
   async evidence(fileName: string): Promise<string> {

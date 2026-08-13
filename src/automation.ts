@@ -226,10 +226,11 @@ export async function executeAction(id: string): Promise<PlannedAction> {
     return { ...action, state: 'verified', checkIn: verified.record?.checkIn };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown automation error.';
-    const screenshotPath = (await rigoBrowser.evidence(`${id}-${action.action}.png`).catch(() => '')) || undefined;
+    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+    const screenshotPath = failureScreenshots[0]?.path || (await rigoBrowser.evidence(`${id}-${action.action}.png`).catch(() => '')) || undefined;
     store.updateAction(id, { state: 'failed', warning: message });
-    log(message, { runId: id, action: action.action, status: 'failed', date: action.date, screenshotPath, errorCategory: 'automation' });
-    await notify(action, 'failed', message, { record: observed?.record, currentUrl: observed?.url, observedPageState: observed?.pageState, screenshotPaths: observed?.screenshots.map((s) => s.path) });
+    log(message, { runId: id, action: action.action, status: 'failed', date: action.date, screenshotPath, screenshots: failureScreenshots.length ? failureScreenshots : undefined, errorCategory: 'automation' });
+    await notify(action, 'failed', message, { record: observed?.record, currentUrl: observed?.url, observedPageState: observed?.pageState, screenshotPaths: [...(observed?.screenshots.map((s) => s.path) || []), ...failureScreenshots.map((s) => s.path)] });
     throw new Error(message);
   }
 }
@@ -265,7 +266,8 @@ async function schedulerTick(): Promise<void> {
     }
   } catch (error) {
     schedulerLastError = true;
-    log(error instanceof Error ? error.message : 'Scheduler error.', { status: 'failed', errorCategory: 'scheduler' });
+    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+    log(error instanceof Error ? error.message : 'Scheduler error.', { status: 'failed', errorCategory: 'scheduler', screenshotPath: failureScreenshots[0]?.path, screenshots: failureScreenshots.length ? failureScreenshots : undefined });
   }
 }
 

@@ -231,7 +231,8 @@ app.post('/api/attendance/check-live', async (_req, res) => {
     res.json({ date, checkedAt: checkedAt.toISOString(), record: storedRecord || {}, stored: true, storedAt: storedRecord?.observedAt, pageState: observed.pageState });
   } catch (error) {
     const message = safeError(error);
-    store.addLog({ id: makeId('log'), timestamp: checkedAt.toISOString(), date, status: 'failed', errorCategory: 'live_attendance_check', message: `Live RigoHR attendance check failed: ${message}` });
+    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+    store.addLog({ id: makeId('log'), timestamp: checkedAt.toISOString(), date, status: 'failed', errorCategory: 'live_attendance_check', message: `Live RigoHR attendance check failed: ${message}`, screenshotPath: failureScreenshots[0]?.path, screenshots: failureScreenshots.length ? failureScreenshots : undefined });
     res.status(502).json({ error: 'RigoHR attendance could not be checked.', detail: message });
   }
 });

@@ -16,7 +16,7 @@ ENV NODE_ENV=production \
     PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY package*.json ./
-RUN npm install --ignore-scripts --no-package-lock
+RUN npm install --ignore-scripts --no-package-lock --include=dev
 
 COPY tsconfig.json ./
 COPY src ./src
