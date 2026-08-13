@@ -36,6 +36,19 @@ describe('schedule safety rules', () => {
     expect(next?.availableNow).toBe(false);
   });
 
+  it('uses a planned time override without treating it as recorded attendance', () => {
+    const next = nextScheduledAction(
+      defaultConfig(),
+      new Date('2026-08-13T02:30:00Z'),
+      {},
+      undefined,
+      { '2026-08-13': { 'check-out': '22:48' } },
+    );
+
+    expect(next?.punchOutWindow).toEqual({ start: '22:48', end: '23:00' });
+    expect(next?.action).toBe('check-in');
+  });
+
   it('skips dates excluded by a leave or holiday calendar', () => {
     const config = defaultConfig();
     const next = nextScheduledAction(config, new Date('2026-08-13T02:30:00Z'), undefined, new Set(['2026-08-13', '2026-08-14']));

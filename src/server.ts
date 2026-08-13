@@ -3,13 +3,13 @@ import express from 'express';
 import path from 'node:path';
 import { evaluate, preview, manualRequest, executeAction, cancelAction, schedulerStatus, startScheduler } from './automation.js';
 import { DAYS } from './config.js';
-import { checkoutGuidance, localParts, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validateRule } from './schedule.js';
+import { checkoutGuidance, getRandomPunchTimes, inWindow, localParts, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validateRule } from './schedule.js';
 import { makeId, store } from './store.js';
 import { evidenceStore } from './evidence.js';
 import { isValidEmail, sendTestEmail } from './mailer.js';
 import { createUser, currentUser, login, logout, requireAdmin, requireAuth } from './auth.js';
 import { rigoBrowser } from './browser.js';
-import type { Config, DateOverride, ScheduleException, ScheduleExceptionType, UserRole } from './types.js';
+import type { ActionType, Config, DateOverride, ScheduleException, ScheduleExceptionType, UserRole } from './types.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4317);
@@ -149,7 +149,7 @@ app.get('/api/exceptions', (req, res) => {
 });
 
 app.get('/api/forecast', (_req, res) => {
-  res.json(upcomingWorkdayForecast(store.config, new Date(), store.randomSeeds, store.exceptions));
+  res.json(upcomingWorkdayForecast(store.config, new Date(), store.randomSeeds, store.exceptions, store.scheduleTimeOverrides));
 });
 
 app.post('/api/exceptions', (req, res) => {
@@ -214,6 +214,33 @@ app.get('/api/attendance', (req, res) => {
   res.json(store.attendance.filter((record) => !date || record.date === date));
 });
 
+app.put('/api/schedule-times/:date', async (req, res) => {
+  try {
+    const date = req.params.date;
+    if (!validDate(date)) throw new Error('Schedule date must use YYYY-MM-DD.');
+    const action = req.body?.action as ActionType;
+    if (action !== 'check-in' && action !== 'check-out') throw new Error('Schedule action must be check-in or check-out.');
+    const time = typeof req.body?.time === 'string' ? req.body.time.trim() : '';
+    minutes(time);
+    const day = localParts(new Date(`${date}T12:00:00Z`), store.config.timezone).day;
+    const selected = ruleForDate(store.config, date, day);
+    if (!selected || !selected.rule.enabled) throw new Error('No enabled schedule applies to this date.');
+    const targetWindow = action === 'check-in' ? selected.rule.checkInWindow : selected.rule.checkOutWindow;
+    if (!inWindow(time, targetWindow)) throw new Error(`${action === 'check-in' ? 'Punch-in' : 'Punch-out'} time must be within ${targetWindow.start}–${targetWindow.end}.`);
+    if (action === 'check-out') {
+      const base = getRandomPunchTimes(date, selected.rule.checkInWindow, selected.rule.checkOutWindow, store.getRandomSeed(date));
+      const plannedCheckIn = store.scheduleTimeOverrides[date]?.['check-in'] || base.checkIn;
+      if (minutes(time) - minutes(plannedCheckIn) < selected.rule.minDurationMinutes) throw new Error(`Punch-out must be at least ${selected.rule.minDurationMinutes / 60} hours after the planned punch-in at ${plannedCheckIn}.`);
+    }
+    store.setScheduleTimeOverride(date, action, time);
+    const cancelled = store.cancelScheduledActionsForDate(date, `Schedule time changed for ${action}; it will be re-evaluated automatically.`);
+    store.addLog({ id: makeId('log'), timestamp: new Date().toISOString(), date, action, status: 'info', errorCategory: 'schedule_time_override', scheduledFor: `${date}T${time}:00`, message: `Automation ${action === 'check-in' ? 'punch-in' : 'punch-out'} time set to ${time}. No attendance record was changed.${cancelled.length ? ` ${cancelled.length} scheduled action(s) will be re-evaluated.` : ''}` });
+    res.json({ date, action, time, cancelledActions: cancelled.length });
+  } catch (error) {
+    res.status(400).json({ error: safeError(error) });
+  }
+});
+
 app.post('/api/attendance/check-live', async (_req, res) => {
   const checkedAt = new Date();
   const date = localParts(checkedAt, store.config.timezone).date;
@@ -262,13 +289,14 @@ app.get('/api/status', (_req, res) => {
   const selected = ruleForDate(store.config, parts.date, parts.day);
   const dailyAttendance = store.getAttendance(parts.date);
   const checkout = dailyAttendance?.checkIn ? checkoutGuidance(store.config, parts.date, parts.day, now, dailyAttendance.checkIn) : undefined;
-  res.json({ now: now.toISOString(), local: parts, scheduler: schedulerStatus(now), schedule: exception ? `${exception.type} today` : selected?.source || 'none', exception, nextAction: nextScheduledAction(store.config, now, store.randomSeeds, new Set(store.exceptions.map((item) => item.date))), checkoutGuidance: checkout, attendance: dailyAttendance, actions: store.actions.slice(0, 20), logs: store.logs.slice(0, 20) });
+  res.json({ now: now.toISOString(), local: parts, scheduler: schedulerStatus(now), schedule: exception ? `${exception.type} today` : selected?.source || 'none', exception, nextAction: nextScheduledAction(store.config, now, store.randomSeeds, new Set(store.exceptions.map((item) => item.date)), store.scheduleTimeOverrides), checkoutGuidance: checkout, attendance: dailyAttendance, actions: store.actions.slice(0, 20), logs: store.logs.slice(0, 20) });
 });
 
 app.post('/api/refresh-schedule/:date', (req, res) => {
   try {
     const date = req.params.date;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid date.');
+    store.clearScheduleTimeOverrides(date);
     store.incrementRandomSeed(date);
     res.json({ success: true });
   } catch (error) {

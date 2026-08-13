@@ -1,4 +1,4 @@
-import type { ActionType, Config, DateOverride, DayName, ScheduleException, ScheduleRule } from './types.js';
+import type { ActionType, Config, DateOverride, DayName, ScheduleException, ScheduleRule, ScheduleTimeOverrides } from './types.js';
 
 export const dayNames: DayName[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -191,7 +191,13 @@ function dayForDate(date: string): DayName {
   return dayNames[new Date(`${date}T12:00:00Z`).getUTCDay()];
 }
 
-export function upcomingWorkdayForecast(config: Config, now: Date, seeds: Record<string, number> = {}, exceptions: ScheduleException[] = []): ForecastDay[] {
+function punchTimesForDate(date: string, rule: ScheduleRule | DateOverride, seeds: Record<string, number>, timeOverrides: ScheduleTimeOverrides): { checkIn: string; checkOut: string } {
+  const randomized = getRandomPunchTimes(date, rule.checkInWindow, rule.checkOutWindow, seeds[date] || 0);
+  const override = timeOverrides[date] || {};
+  return { checkIn: override['check-in'] || randomized.checkIn, checkOut: override['check-out'] || randomized.checkOut };
+}
+
+export function upcomingWorkdayForecast(config: Config, now: Date, seeds: Record<string, number> = {}, exceptions: ScheduleException[] = [], timeOverrides: ScheduleTimeOverrides = {}): ForecastDay[] {
   const current = localParts(now, config.timezone);
   const exceptionByDate = new Map(exceptions.map((exception) => [exception.date, exception]));
   const forecast: ForecastDay[] = [];
@@ -209,13 +215,13 @@ export function upcomingWorkdayForecast(config: Config, now: Date, seeds: Record
       forecast.push({ date, day, status: 'off', shift: selected?.rule.shift, scheduleSource: selected?.source });
       continue;
     }
-    const randomized = getRandomPunchTimes(date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seeds[date] || 0);
+    const randomized = punchTimesForDate(date, selected.rule, seeds, timeOverrides);
     forecast.push({ date, day, shift: selected.rule.shift, status: 'scheduled', checkIn: randomized.checkIn, checkOut: randomized.checkOut, checkInWindow: selected.rule.checkInWindow, checkOutWindow: selected.rule.checkOutWindow, scheduleSource: selected.source });
   }
   return forecast;
 }
 
-export function nextScheduledAction(config: Config, now: Date, seeds?: Record<string, number>, excludedDates?: Set<string>): NextScheduledAction | undefined {
+export function nextScheduledAction(config: Config, now: Date, seeds?: Record<string, number>, excludedDates?: Set<string>, timeOverrides: ScheduleTimeOverrides = {}): NextScheduledAction | undefined {
   const current = localParts(now, config.timezone);
   const currentMinutes = minutes(current.time);
   for (let offset = 0; offset <= 14; offset += 1) {
@@ -224,7 +230,7 @@ export function nextScheduledAction(config: Config, now: Date, seeds?: Record<st
     const selected = ruleForDate(config, date, dayForDate(date));
     if (!selected || !selected.rule.enabled) continue;
     const seedOffset = seeds ? (seeds[date] || 0) : 0;
-    const randomized = getRandomPunchTimes(date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+    const randomized = punchTimesForDate(date, selected.rule, seeds || {}, timeOverrides);
     const windows: Array<[ActionType, { start: string; end: string }]> = [
       ['check-in', { start: randomized.checkIn, end: selected.rule.checkInWindow.end }],
       ['check-out', { start: randomized.checkOut, end: selected.rule.checkOutWindow.end }],

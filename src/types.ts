@@ -1,5 +1,6 @@
 export type DayName = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 export type ActionType = 'check-in' | 'check-out';
+export type ScheduleTimeOverrides = Record<string, Partial<Record<ActionType, string>>>;
 export type ScheduleExceptionType = 'skip' | 'leave' | 'holiday';
 export type RunState =
   | 'scheduled'
@@ -107,4 +108,5 @@ export interface PersistedState {
   actions: PlannedAction[];
   logs: LogEntry[];
   randomSeeds?: Record<string, number>;
+  scheduleTimeOverrides?: ScheduleTimeOverrides;
 }

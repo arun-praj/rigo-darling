@@ -44,7 +44,9 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   if (!selected || !selected.rule.enabled) return undefined;
   validateRule(selected.rule);
   const seedOffset = store.getRandomSeed(parts.date);
-  const randomized = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+  const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+  const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
+  const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
   const targetWindow = action === 'check-in'
     ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
     : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };
@@ -92,7 +94,9 @@ function eligibilityReason(action: ActionType, now: Date): string {
   if (!selected) return `${displayAction(action)}: no weekly rule or date override applies today.`;
   if (!selected.rule.enabled) return `${displayAction(action)}: today’s ${selected.source} is disabled.`;
   const seedOffset = store.getRandomSeed(parts.date);
-  const randomized = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+  const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+  const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
+  const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
   const targetWindow = action === 'check-in'
     ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
     : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };

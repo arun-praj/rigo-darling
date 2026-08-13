@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DAYS, defaultConfig } from './config.js';
 import { hashPassword } from './password.js';
-import type { AttendanceRecord, AuthUser, Config, DateOverride, LogEntry, PlannedAction, PersistedState, ScheduleException, ScheduleExceptionType, ScheduleRule, UserRole } from './types.js';
+import type { AttendanceRecord, AuthUser, Config, DateOverride, LogEntry, PlannedAction, PersistedState, ScheduleException, ScheduleExceptionType, ScheduleRule, ScheduleTimeOverrides, UserRole } from './types.js';
 
 const dataDir = path.resolve('data');
 const databasePath = path.resolve(process.env.RIGOHR_DB_PATH || path.join(dataDir, 'rigohr.sqlite'));
@@ -138,6 +138,13 @@ export class Store {
         date TEXT PRIMARY KEY,
         seed INTEGER NOT NULL
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS schedule_time_overrides (
+        date TEXT NOT NULL,
+        action TEXT NOT NULL CHECK(action IN ('check-in', 'check-out')),
+        time TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(date, action)
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS logs (
         id TEXT PRIMARY KEY,
         run_id TEXT,
@@ -190,6 +197,9 @@ export class Store {
         for (const record of this.extractLegacyAttendance(legacy)) this.upsertAttendance(record);
         for (const entry of legacy.logs || []) this.insertLog(entry);
         for (const [date, seed] of Object.entries(legacy.randomSeeds || {})) this.db.prepare('INSERT OR REPLACE INTO random_seeds(date, seed) VALUES (?, ?)').run(date, seed);
+        for (const [date, overrides] of Object.entries(legacy.scheduleTimeOverrides || {})) {
+          for (const [action, time] of Object.entries(overrides)) if (action === 'check-in' || action === 'check-out') this.setScheduleTimeOverride(date, action, time);
+        }
       } catch (error) {
         throw new Error(`SQLite migration from data/state.json failed: ${error instanceof Error ? error.message : 'unknown error'}`);
       }
@@ -430,6 +440,25 @@ export class Store {
     const next = this.getRandomSeed(date) + 1;
     this.db.prepare('INSERT INTO random_seeds(date, seed) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET seed = excluded.seed').run(date, next);
     return next;
+  }
+
+  get scheduleTimeOverrides(): ScheduleTimeOverrides {
+    const result: ScheduleTimeOverrides = {};
+    for (const row of this.db.prepare('SELECT date, action, time FROM schedule_time_overrides').all() as Row[]) {
+      const date = String(row.date);
+      const action = row.action as 'check-in' | 'check-out';
+      result[date] ??= {};
+      result[date][action] = String(row.time);
+    }
+    return result;
+  }
+
+  setScheduleTimeOverride(date: string, action: 'check-in' | 'check-out', time: string): void {
+    this.db.prepare('INSERT INTO schedule_time_overrides(date, action, time, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(date, action) DO UPDATE SET time = excluded.time, updated_at = excluded.updated_at').run(date, action, time, new Date().toISOString());
+  }
+
+  clearScheduleTimeOverrides(date: string): void {
+    this.db.prepare('DELETE FROM schedule_time_overrides WHERE date = ?').run(date);
   }
 }
 
