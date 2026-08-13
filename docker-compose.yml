@@ -2,6 +2,7 @@ services:
   rigo-darling:
     build:
       context: .
+      network: host
     container_name: rigo-darling
     env_file:
       - .env

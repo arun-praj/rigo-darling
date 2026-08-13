@@ -43,6 +43,10 @@ headless Chromium profile are stored in named Docker volumes. Stop it with
 `docker compose down`; use `docker compose down -v` only if you intentionally
 want to delete those volumes and all stored application data.
 
+The Compose build uses the Linux host network so Debian package installation
+also works on DietPi systems where Docker's build-time DNS cannot resolve
+package repositories.
+
 Copy `.env.example` when setting up another machine. Keep `.env` local. The first SQLite startup imports the existing `data/state.json` once; the JSON file is retained as a recoverable migration source.
 
 ## Authentication
