@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { addMinutesToTime, checkoutGuidance, durationMinutes, inWindow, isWithinLeadWindow, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validateRule, getRandomPunchTimes } from '../src/schedule.js';
+import { addMinutesToTime, checkoutGuidance, durationMinutes, inWindow, isWithinLeadWindow, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validatePlannedPunchTimes, validateRule, getRandomPunchTimes } from '../src/schedule.js';
 import { defaultConfig } from '../src/config.js';
 
 describe('schedule safety rules', () => {
   it('rejects a minimum below nine hours', () => expect(() => validateRule({ ...defaultConfig().weekly[0], minDurationMinutes: 539 })).toThrow(/540/));
+  it('rejects windows that cannot produce a valid nine-to-under-ten-hour plan', () => expect(() => validateRule({ ...defaultConfig().weekly[0], checkInWindow: { start: '10:30', end: '10:45' }, checkOutWindow: { start: '19:00', end: '19:30' } })).toThrow(/cannot produce/));
+  it('rejects punch-out boundaries and planned spans of ten hours or more', () => {
+    const rule = defaultConfig().weekly[0];
+    expect(() => validatePlannedPunchTimes('10:00', '19:00', rule)).toThrow(/after 19:00/);
+    expect(() => validatePlannedPunchTimes('09:30', '19:30', rule)).toThrow(/less than 10/);
+  });
   it('allows exactly nine hours and blocks less at the caller', () => {
     expect(durationMinutes('10:00', new Date('2026-08-13T13:59:00+05:45'), 'Asia/Kathmandu')).toBe(239);
     expect(addMinutesToTime('10:00', 540)).toBe('19:00');
@@ -29,11 +35,17 @@ describe('schedule safety rules', () => {
     const next = nextScheduledAction(config, new Date('2026-08-13T02:30:00Z'));
     expect(next?.action).toBe('check-in');
     expect(next?.date).toBe('2026-08-13');
+    expect(next?.shift).toBe('Evening');
     expect(next?.windowStart).toBe('12:55');
     expect(next?.checkInWindow).toEqual({ start: '12:30', end: '13:45' });
     expect(next?.checkOutWindow).toEqual({ start: '22:00', end: '23:00' });
-    expect(next?.punchOutWindow).toEqual({ start: '22:46', end: '23:00' });
+    expect(next?.punchOutWindow).toEqual({ start: '22:45', end: '23:00' });
     expect(next?.availableNow).toBe(false);
+  });
+
+  it('keeps showing today after today\'s windows close until the local date changes', () => {
+    const next = nextScheduledAction(defaultConfig(), new Date('2026-08-13T17:16:00Z'));
+    expect(next).toMatchObject({ date: '2026-08-13', action: 'check-out', shift: 'Evening', windowExpired: true });
   });
 
   it('uses a planned time override without treating it as recorded attendance', () => {
@@ -78,10 +90,10 @@ describe('schedule safety rules', () => {
 
       expect(inMins).toBeGreaterThanOrEqual(minutes(checkInWindow.start));
       expect(inMins).toBeLessThanOrEqual(minutes(checkInWindow.end));
-      expect(outMins).toBeGreaterThanOrEqual(minutes(checkOutWindow.start));
-      expect(outMins).toBeLessThanOrEqual(minutes(checkOutWindow.end));
+      expect(outMins).toBeGreaterThan(minutes(checkOutWindow.start));
+      expect(outMins).toBeLessThan(minutes(checkOutWindow.end));
       expect(duration).toBeGreaterThanOrEqual(540); // 9 hours
-      expect(duration).toBeLessThanOrEqual(600); // 10 hours
+      expect(duration).toBeLessThan(600); // less than 10 hours
     }
   });
 

@@ -6,15 +6,25 @@ import type { ActionType, AttendanceRecord } from './types.js';
 
 type Evidence = { label: string; path: string };
 type FailureAwareError = Error & { failureEvidence?: Evidence[] };
+type PunchAwareError = FailureAwareError & { uncertainPunch?: boolean };
 
 const APP_ORIGIN = 'https://app.rigohr.com';
 const LOGIN_ORIGIN = 'https://login.app.rigohr.com';
 const allowedAppPaths = new Set(['/hr', '/hr/clock/in', '/hr/employee', '/login']);
 const PAGE_SETTLE_MIN_MS = 1_000;
-const PAGE_SETTLE_MAX_MS = 5_000;
+const PAGE_SETTLE_MAX_MS = 2_000;
 
 function pageSettleDelayMs(): number {
   return PAGE_SETTLE_MIN_MS + Math.floor(Math.random() * (PAGE_SETTLE_MAX_MS - PAGE_SETTLE_MIN_MS + 1));
+}
+
+export function isBrowserClosedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /target page, context or browser has been closed|page, context or browser has been closed/i.test(message);
+}
+
+export function isUncertainPunchError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as PunchAwareError).uncertainPunch) || isBrowserClosedError(error);
 }
 
 export function isAllowedRigoUrl(value: string): boolean {
@@ -86,6 +96,10 @@ export class RigoBrowser {
   }
 
   async getPage(): Promise<Page> {
+    if (this.page?.isClosed()) await this.close();
+    if (this.context) {
+      try { this.context.pages(); } catch { await this.close(); }
+    }
     if (!this.context) {
       const profile = path.resolve(process.env.RIGOHR_BROWSER_PROFILE || '.browser-profile');
       fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
@@ -97,11 +111,25 @@ export class RigoBrowser {
     }
     this.page ??= this.context.pages()[0] ?? await this.context.newPage();
     if (!this.navigationGuardAttached) {
-      this.context.on('page', (popup) => void popup.close().catch(() => undefined));
-      this.page.on('framenavigated', (frame) => {
-        if (frame === this.page?.mainFrame() && !isAllowedRigoUrl(frame.url())) {
-          void this.page?.goBack().catch(() => undefined);
+      const context = this.context;
+      context.on('close', () => {
+        if (this.context !== context) return;
+        this.context = undefined;
+        this.page = undefined;
+        this.navigationGuardAttached = false;
+      });
+      context.on('page', (popup) => void popup.close().catch(() => undefined));
+      const page = this.page;
+      if (!page) throw new Error('RigoHR browser page could not be initialized.');
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame() && !isAllowedRigoUrl(frame.url())) {
+          void page.goBack().catch(() => undefined);
         }
+      });
+      page.on('close', () => {
+        if (this.page !== page) return;
+        this.page = undefined;
+        this.navigationGuardAttached = false;
       });
       this.navigationGuardAttached = true;
     }
@@ -290,10 +318,14 @@ export class RigoBrowser {
       if (row.rowCount !== 1) return { pageState: `${heading}; ${row.rowCount === 0 ? 'date-row-not-found' : 'date-row-ambiguous'}`, url: page.url(), screenshots };
       return { record: { date, checkIn: row.checkIn, checkOut: row.checkOut }, pageState: `${heading}; date-row-found`, url: page.url(), screenshots };
     } catch (error) {
-      const failure = await this.capture(`${evidenceLabel}-failure-state`).catch(() => undefined);
+      const browserClosed = isBrowserClosedError(error);
+      const failure = browserClosed ? undefined : await this.capture(`${evidenceLabel}-failure-state`).catch(() => undefined);
       const evidence = failure ? [failure] : [];
       this.failureEvidence = evidence;
-      if (error instanceof Error) (error as FailureAwareError).failureEvidence = evidence;
+      if (browserClosed) await this.close();
+      if (error instanceof Error) {
+        (error as PunchAwareError).failureEvidence = evidence;
+      }
       throw error;
     } finally {
       await this.close();
@@ -327,10 +359,15 @@ export class RigoBrowser {
       if (afterRefresh) screenshots.push(afterRefresh);
       return screenshots;
     } catch (error) {
-      const failure = await this.capture(`${evidenceLabel}-failure-state`).catch(() => undefined);
+      const browserClosed = isBrowserClosedError(error);
+      const failure = browserClosed ? undefined : await this.capture(`${evidenceLabel}-failure-state`).catch(() => undefined);
       const evidence = failure ? [failure] : [];
       this.failureEvidence = evidence;
-      if (error instanceof Error) (error as FailureAwareError).failureEvidence = evidence;
+      if (browserClosed) await this.close();
+      if (error instanceof Error) {
+        (error as PunchAwareError).failureEvidence = evidence;
+        if (browserClosed) (error as PunchAwareError).uncertainPunch = true;
+      }
       throw error;
     } finally {
       await this.close();

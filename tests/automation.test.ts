@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hardPunchDecision } from '../src/automation.js';
+import { hardPunchDecision, reconcilePunchOutcome } from '../src/automation.js';
 
 describe('hard punch safety checks', () => {
   const atSixPm = new Date('2026-08-13T12:15:00Z'); // 18:00 Asia/Kathmandu
@@ -25,5 +25,19 @@ describe('hard punch safety checks', () => {
   it('allows another hard punch-out after nine hours', () => {
     const result = hardPunchDecision('check-out', { date: '2026-08-13', checkIn: '09:00', checkOut: '17:00' }, atSixPm, 'Asia/Kathmandu', 540);
     expect(result.state).toBe('eligible');
+  });
+
+  it('verifies an uncertain punch from the reconciled attendance record without retrying', () => {
+    const result = reconcilePunchOutcome('check-out', { date: '2026-08-13', checkIn: '11:35a', checkOut: '11:27p' });
+    expect(result.verified).toBe(true);
+    expect(result.value).toBe('11:27p');
+    expect(result.message).toMatch(/not retried/);
+  });
+
+  it('fails an uncertain punch safely when reconciliation has no punch-out', () => {
+    const result = reconcilePunchOutcome('check-out', { date: '2026-08-13', checkIn: '11:35a' });
+    expect(result.verified).toBe(false);
+    expect(result.message).toMatch(/could not be verified/);
+    expect(result.message).toMatch(/not retried/);
   });
 });

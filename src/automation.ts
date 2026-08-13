@@ -1,4 +1,4 @@
-import { rigoBrowser } from './browser.js';
+import { isUncertainPunchError, rigoBrowser } from './browser.js';
 import { defaultConfig } from './config.js';
 import { localParts, ruleForDate, inWindow, isWithinLeadWindow, minutes, durationMinutes, addMinutesToTime, validatePlannedPunchTimes, validateRule, getRandomPunchTimes } from './schedule.js';
 import { makeId, store } from './store.js';
@@ -10,6 +10,27 @@ const AUTO_LEAD_MINUTES = 15;
 const SCHEDULER_INTERVAL_MS = 15_000;
 const SCHEDULER_STALE_AFTER_MS = SCHEDULER_INTERVAL_MS * 3;
 const displayAction = (action: ActionType): string => action === 'check-in' ? 'Punch-in' : 'Punch-out';
+
+export interface PunchReconciliation {
+  verified: boolean;
+  value?: string;
+  message: string;
+}
+
+export function reconcilePunchOutcome(action: ActionType, record: AttendanceRecord | undefined): PunchReconciliation {
+  const value = action === 'check-in' ? record?.checkIn : record?.checkOut;
+  if (value) {
+    return {
+      verified: true,
+      value,
+      message: `${displayAction(action)} verified at ${value} after the browser session closed; the punch was not retried.`,
+    };
+  }
+  return {
+    verified: false,
+    message: `${displayAction(action)} result could not be verified after the browser session closed; the punch was not retried.`,
+  };
+}
 let schedulerStartedAt: Date | undefined;
 let schedulerLastTickAt: Date | undefined;
 let schedulerLastError = false;
@@ -168,6 +189,7 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
     expiresAt: now.toISOString(),
   };
   let before: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+  let punchAttempted = false;
   try {
     before = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-before`);
     if (before.record) store.upsertAttendance(before.record);
@@ -183,7 +205,8 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
 
     store.addAction(planned);
     log(`Hard ${displayAction(action).toLowerCase()} requested now; the configured schedule window was ignored.`, { runId: actionId, action, date: parts.date, status: 'scheduled', scheduleSource, scheduledFor: now.toISOString() });
-    store.updateAction(actionId, { state: 'clicked' });
+    if (!store.claimScheduledAction(actionId)) throw new Error('Hard punch action could not be claimed; no punch was submitted.');
+    punchAttempted = true;
     const clickScreenshots = await rigoBrowser.clickPunch(action, `${actionId}-hard-now`);
     log(`Clicked hard ${displayAction(action).toLowerCase()} now, refreshed the home page, and will verify the dashboard attendance record.`, { runId: actionId, action, date: parts.date, status: 'clicked', scheduleSource, executionAt: new Date().toISOString(), screenshots: clickScreenshots });
     const verified = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-after`);
@@ -196,6 +219,31 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
     await notify({ ...planned, state: 'verified' }, 'verified', message, { record: verified.record, currentUrl: verified.url, observedPageState: verified.pageState, screenshotPaths: [...(before?.screenshots || []), ...verified.screenshots].map((s) => s.path) });
     return { ...planned, state: 'verified', checkIn: verified.record?.checkIn };
   } catch (error) {
+    if (punchAttempted && isUncertainPunchError(error)) {
+      let reconciled: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+      let reconciliationError: string | undefined;
+      try {
+        reconciled = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-reconcile`);
+        if (reconciled.record) store.upsertAttendance(reconciled.record);
+      } catch (errorDuringReconciliation) {
+        reconciliationError = errorDuringReconciliation instanceof Error ? errorDuringReconciliation.message : 'Attendance reconciliation failed.';
+      }
+      const outcome = reconcilePunchOutcome(action, reconciled?.record);
+      const message = reconciliationError ? `${outcome.message} Reconciliation failed: ${reconciliationError}` : outcome.message;
+      const screenshots = [...(before?.screenshots || []), ...(reconciled?.screenshots || [])];
+      if (outcome.verified) {
+        store.updateAction(actionId, { state: 'verified', checkIn: reconciled?.record?.checkIn });
+        log(message, { runId: actionId, action, date: parts.date, status: 'verified', scheduleSource, url: reconciled?.url, observedPageState: reconciled?.pageState, observedCheckIn: reconciled?.record?.checkIn, observedCheckOut: reconciled?.record?.checkOut, verificationResult: outcome.value, screenshots });
+        await notify({ ...planned, state: 'verified' }, 'verified', message, { record: reconciled?.record, currentUrl: reconciled?.url, observedPageState: reconciled?.pageState, screenshotPaths: screenshots.map((s) => s.path) });
+        return { ...planned, state: 'verified', checkIn: reconciled?.record?.checkIn };
+      }
+      const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+      const screenshotPath = failureScreenshots[0]?.path || undefined;
+      store.updateAction(actionId, { state: 'failed', warning: message });
+      log(message, { runId: actionId, action, date: parts.date, status: 'failed', scheduleSource, screenshotPath, screenshots: [...screenshots, ...failureScreenshots], errorCategory: 'uncertain_punch' });
+      await notify({ ...planned, state: 'failed' }, 'failed', message, { record: reconciled?.record || before?.record, currentUrl: reconciled?.url || before?.url, observedPageState: reconciled?.pageState || before?.pageState, screenshotPaths: [...screenshots, ...failureScreenshots].map((s) => s.path) });
+      throw new Error(message);
+    }
     const message = error instanceof Error ? error.message : 'Unknown hard punch error.';
     const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
     const screenshotPath = failureScreenshots[0]?.path || (await rigoBrowser.evidence(`${actionId}-hard-${action}.png`).catch(() => '')) || undefined;
@@ -266,6 +314,7 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
   }
 
   let observed: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+  let punchAttempted = false;
   try {
     observed = await rigoBrowser.readAttendance(action.date, `${id}-before-action`);
     if (observed.record) store.upsertAttendance(observed.record);
@@ -304,7 +353,12 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
       }
     }
 
-    store.updateAction(id, { state: 'clicked' });
+    if (!store.claimScheduledAction(id)) {
+      const current = store.actions.find((candidate) => candidate.id === id);
+      if (current?.state === 'clicked' || current?.state === 'verified') return current;
+      throw new Error('Scheduled action was claimed or changed by another process; no punch was submitted.');
+    }
+    punchAttempted = true;
     const clickScreenshots = await rigoBrowser.clickPunch(action.action, `${id}-${action.action}`);
     log(`Clicked ${displayAction(action.action)} automatically, refreshed the home page, and will verify the dashboard attendance record.`, { runId: id, action: action.action, status: 'clicked', date: action.date, scheduledFor: action.scheduledFor, executionAt: now.toISOString(), screenshots: clickScreenshots });
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -317,6 +371,31 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
     await notify(action, 'verified', `Verified ${displayAction(action.action)} at ${verifiedValue}.`, { record: verified.record, currentUrl: verified.url, observedPageState: verified.pageState, screenshotPaths: [...observed.screenshots, ...verified.screenshots].map((s) => s.path) });
     return { ...action, state: 'verified', checkIn: verified.record?.checkIn };
   } catch (error) {
+    if (punchAttempted && isUncertainPunchError(error)) {
+      let reconciled: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+      let reconciliationError: string | undefined;
+      try {
+        reconciled = await rigoBrowser.readAttendance(action.date, `${id}-reconcile`);
+        if (reconciled.record) store.upsertAttendance(reconciled.record);
+      } catch (errorDuringReconciliation) {
+        reconciliationError = errorDuringReconciliation instanceof Error ? errorDuringReconciliation.message : 'Attendance reconciliation failed.';
+      }
+      const outcome = reconcilePunchOutcome(action.action, reconciled?.record);
+      const message = reconciliationError ? `${outcome.message} Reconciliation failed: ${reconciliationError}` : outcome.message;
+      const screenshots = [...(observed?.screenshots || []), ...(reconciled?.screenshots || [])];
+      if (outcome.verified) {
+        store.updateAction(id, { state: 'verified', checkIn: reconciled?.record?.checkIn });
+        log(message, { runId: id, action: action.action, status: 'verified', date: action.date, url: reconciled?.url, observedPageState: reconciled?.pageState, observedCheckIn: reconciled?.record?.checkIn, observedCheckOut: reconciled?.record?.checkOut, verificationResult: outcome.value, screenshots });
+        await notify({ ...action, state: 'verified' }, 'verified', message, { record: reconciled?.record, currentUrl: reconciled?.url, observedPageState: reconciled?.pageState, screenshotPaths: screenshots.map((s) => s.path) });
+        return { ...action, state: 'verified', checkIn: reconciled?.record?.checkIn };
+      }
+      const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+      const screenshotPath = failureScreenshots[0]?.path || undefined;
+      store.updateAction(id, { state: 'failed', warning: message });
+      log(message, { runId: id, action: action.action, status: 'failed', date: action.date, screenshotPath, screenshots: [...screenshots, ...failureScreenshots], errorCategory: 'uncertain_punch' });
+      await notify(action, 'failed', message, { record: reconciled?.record || observed?.record, currentUrl: reconciled?.url || observed?.url, observedPageState: reconciled?.pageState || observed?.pageState, screenshotPaths: [...screenshots, ...failureScreenshots].map((s) => s.path) });
+      throw new Error(message);
+    }
     const message = error instanceof Error ? error.message : 'Unknown automation error.';
     const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
     const screenshotPath = failureScreenshots[0]?.path || (await rigoBrowser.evidence(`${id}-${action.action}.png`).catch(() => '')) || undefined;

@@ -3,12 +3,13 @@ import express from 'express';
 import path from 'node:path';
 import { evaluate, preview, manualRequest, hardPunchNow, executeAction, cancelAction, schedulerStatus, startScheduler } from './automation.js';
 import { DAYS } from './config.js';
-import { checkoutGuidance, getRandomPunchTimes, inWindow, localParts, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validateRule } from './schedule.js';
+import { checkoutGuidance, getRandomPunchTimes, localParts, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validatePlannedPunchTimes, validateRule } from './schedule.js';
 import { makeId, store } from './store.js';
 import { evidenceStore } from './evidence.js';
 import { isValidEmail, sendTestEmail } from './mailer.js';
 import { createUser, currentUser, login, logout, requireAdmin, requireAuth } from './auth.js';
 import { rigoBrowser } from './browser.js';
+import { InstanceLock } from './instance-lock.js';
 import type { ActionType, Config, DateOverride, ScheduleException, ScheduleExceptionType, UserRole } from './types.js';
 
 const app = express();
@@ -225,13 +226,12 @@ app.put('/api/schedule-times/:date', async (req, res) => {
     const day = localParts(new Date(`${date}T12:00:00Z`), store.config.timezone).day;
     const selected = ruleForDate(store.config, date, day);
     if (!selected || !selected.rule.enabled) throw new Error('No enabled schedule applies to this date.');
-    const targetWindow = action === 'check-in' ? selected.rule.checkInWindow : selected.rule.checkOutWindow;
-    if (!inWindow(time, targetWindow)) throw new Error(`${action === 'check-in' ? 'Punch-in' : 'Punch-out'} time must be within ${targetWindow.start}–${targetWindow.end}.`);
-    if (action === 'check-out') {
-      const base = getRandomPunchTimes(date, selected.rule.checkInWindow, selected.rule.checkOutWindow, store.getRandomSeed(date));
-      const plannedCheckIn = store.scheduleTimeOverrides[date]?.['check-in'] || base.checkIn;
-      if (minutes(time) - minutes(plannedCheckIn) < selected.rule.minDurationMinutes) throw new Error(`Punch-out must be at least ${selected.rule.minDurationMinutes / 60} hours after the planned punch-in at ${plannedCheckIn}.`);
-    }
+    validateRule(selected.rule);
+    const base = getRandomPunchTimes(date, selected.rule.checkInWindow, selected.rule.checkOutWindow, store.getRandomSeed(date), selected.rule.minDurationMinutes, selected.rule.maxDurationMinutes);
+    const existingOverrides = store.scheduleTimeOverrides[date] || {};
+    const plannedCheckIn = action === 'check-in' ? time : existingOverrides['check-in'] || base.checkIn;
+    const plannedCheckOut = action === 'check-out' ? time : existingOverrides['check-out'] || base.checkOut;
+    validatePlannedPunchTimes(plannedCheckIn, plannedCheckOut, selected.rule);
     store.setScheduleTimeOverride(date, action, time);
     const cancelled = store.cancelScheduledActionsForDate(date, `Schedule time changed for ${action}; it will be re-evaluated automatically.`);
     store.addLog({ id: makeId('log'), timestamp: new Date().toISOString(), date, action, status: 'info', errorCategory: 'schedule_time_override', scheduledFor: `${date}T${time}:00`, message: `Automation ${action === 'check-in' ? 'punch-in' : 'punch-out'} time set to ${time}. No attendance record was changed.${cancelled.length ? ` ${cancelled.length} scheduled action(s) will be re-evaluated.` : ''}` });
@@ -335,7 +335,28 @@ app.post('/api/actions/:id/cancel', (req, res) => {
 
 app.use((_req, res) => res.sendFile(path.resolve('public/index.html')));
 
-app.listen(port, host, () => {
+const instanceLock = new InstanceLock(path.resolve(process.env.RIGOHR_INSTANCE_LOCK || path.join('data', 'rigohr-attendance.lock')));
+instanceLock.acquire();
+
+const server = app.listen(port, host, () => {
   console.log(`RigoHR Attendance Assistant listening at http://${host}:${port}`);
-  startScheduler();
+  schedulerTimer = startScheduler();
 });
+
+let schedulerTimer: NodeJS.Timeout | undefined;
+let shuttingDown = false;
+
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (schedulerTimer) clearInterval(schedulerTimer);
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await rigoBrowser.close().catch(() => undefined);
+  store.close();
+  instanceLock.release();
+  process.exit(0);
+}
+
+process.once('SIGINT', () => { void shutdown(); });
+process.once('SIGTERM', () => { void shutdown(); });
+process.once('exit', () => { instanceLock.release(); });

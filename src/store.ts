@@ -8,6 +8,11 @@ import type { AttendanceRecord, AuthUser, Config, DateOverride, LogEntry, Planne
 const dataDir = path.resolve('data');
 const databasePath = path.resolve(process.env.RIGOHR_DB_PATH || path.join(dataDir, 'rigohr.sqlite'));
 
+export interface StoreOptions {
+  dataDirectory?: string;
+  seedAdmin?: boolean;
+}
+
 type Row = Record<string, unknown>;
 
 function text(value: unknown): string | undefined {
@@ -38,14 +43,16 @@ function overrideFromRow(row: Row): DateOverride {
 
 export class Store {
   private readonly db: DatabaseSync;
+  private readonly dataDirectory: string;
 
-  constructor() {
-    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(databasePath);
+  constructor(databaseFile = databasePath, options: StoreOptions = {}) {
+    this.dataDirectory = path.resolve(options.dataDirectory || path.dirname(databaseFile));
+    fs.mkdirSync(this.dataDirectory, { recursive: true, mode: 0o700 });
+    this.db = new DatabaseSync(databaseFile);
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     this.createSchema();
     this.migrateLegacyJson();
-    this.seedAdmin();
+    if (options.seedAdmin !== false) this.seedAdmin();
   }
 
   private createSchema(): void {
@@ -186,7 +193,7 @@ export class Store {
       this.migrateLegacyRecipient();
       return;
     }
-    const legacyPath = path.join(dataDir, 'state.json');
+    const legacyPath = path.join(this.dataDirectory, 'state.json');
     if (fs.existsSync(legacyPath)) {
       try {
         const legacy = JSON.parse(fs.readFileSync(legacyPath, 'utf8')) as PersistedState;
@@ -212,7 +219,7 @@ export class Store {
 
   private migrateLegacyRecipient(): void {
     if (this.setting('legacy_recipient_migrated') === '1') return;
-    const legacyPath = path.join(dataDir, 'state.json');
+    const legacyPath = path.join(this.dataDirectory, 'state.json');
     if (fs.existsSync(legacyPath)) {
       const legacy = JSON.parse(fs.readFileSync(legacyPath, 'utf8')) as PersistedState;
       const email = legacy.config?.notificationEmails?.[0] || legacy.config?.notificationEmail;
@@ -333,6 +340,12 @@ export class Store {
   }
 
   addAction(action: PlannedAction): void { this.insertAction(action); }
+
+  claimScheduledAction(id: string): PlannedAction | undefined {
+    const result = this.db.prepare("UPDATE actions SET state = 'clicked' WHERE id = ? AND state = 'scheduled'").run(id);
+    if (Number(result.changes) !== 1) return undefined;
+    return this.actions.find((action) => action.id === id);
+  }
 
   updateAction(id: string, patch: Partial<PlannedAction>): PlannedAction | undefined {
     const current = this.actions.find((action) => action.id === id);
@@ -459,6 +472,10 @@ export class Store {
 
   clearScheduleTimeOverrides(date: string): void {
     this.db.prepare('DELETE FROM schedule_time_overrides WHERE date = ?').run(date);
+  }
+
+  close(): void {
+    this.db.close();
   }
 }
 

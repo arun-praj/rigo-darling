@@ -1,6 +1,8 @@
 import type { ActionType, Config, DateOverride, DayName, ScheduleException, ScheduleRule, ScheduleTimeOverrides } from './types.js';
 
 export const dayNames: DayName[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+export const MIN_PLANNED_DURATION_MINUTES = 540;
+export const MAX_PLANNED_DURATION_MINUTES = 600;
 
 export function minutes(value: string): number {
   const match = /^(\d{1,2}):(\d{2})$/.exec(value);
@@ -18,11 +20,18 @@ export function validateRule(rule: ScheduleRule | Omit<DateOverride, 'date'>): v
   const checkOutEnd = minutes(rule.checkOutWindow.end);
   if (checkInStart > checkInEnd) throw new Error('Punch-in window must not cross midnight.');
   if (checkOutStart > checkOutEnd) throw new Error('Punch-out window must not cross midnight.');
-  if (!Number.isInteger(rule.minDurationMinutes) || rule.minDurationMinutes < 540) {
+  if (!Number.isInteger(rule.minDurationMinutes) || rule.minDurationMinutes < MIN_PLANNED_DURATION_MINUTES) {
     throw new Error('Minimum duration must be at least 540 minutes (9 hours).');
   }
-  if (!Number.isInteger(rule.maxDurationMinutes) || rule.maxDurationMinutes < rule.minDurationMinutes) {
-    throw new Error('Maximum duration must be at least the minimum duration.');
+  if (!Number.isInteger(rule.maxDurationMinutes) || rule.maxDurationMinutes > MAX_PLANNED_DURATION_MINUTES || rule.maxDurationMinutes <= rule.minDurationMinutes) {
+    throw new Error('Maximum planned duration must be greater than the minimum and less than or equal to 600 minutes (10 hours).');
+  }
+  const validOutStart = checkOutStart + 1;
+  const validOutEnd = checkOutEnd - 1;
+  if (validOutStart > validOutEnd) throw new Error('Punch-out window must contain a time strictly after its start and before its end.');
+  const hasFeasiblePair = findPlannedPunchPair(rule.checkInWindow, rule.checkOutWindow, rule.minDurationMinutes, rule.maxDurationMinutes) !== undefined;
+  if (!hasFeasiblePair) {
+    throw new Error('Punch-in and punch-out windows cannot produce a planned span of at least 9 hours and less than 10 hours.');
   }
 }
 
@@ -72,6 +81,52 @@ export function to24Hour(value: string): string {
   return `${String(hour).padStart(2, '0')}:${match[2]}`;
 }
 
+function formatMinutes(total: number): string {
+  const normalized = ((total % (24 * 60)) + (24 * 60)) % (24 * 60);
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+}
+
+function findPlannedPunchPair(
+  checkInWindow: { start: string; end: string },
+  checkOutWindow: { start: string; end: string },
+  minDurationMinutes = MIN_PLANNED_DURATION_MINUTES,
+  maxDurationMinutes = MAX_PLANNED_DURATION_MINUTES,
+): { checkIn: string; checkOut: string } | undefined {
+  const startIn = minutes(checkInWindow.start);
+  const endIn = minutes(checkInWindow.end);
+  const startOut = minutes(checkOutWindow.start) + 1;
+  const endOut = minutes(checkOutWindow.end) - 1;
+  if (startOut > endOut) return undefined;
+  for (let checkInMin = startIn; checkInMin <= endIn; checkInMin++) {
+    for (let checkOutMin = startOut; checkOutMin <= endOut; checkOutMin++) {
+      const duration = checkOutMin - checkInMin;
+      if (duration >= minDurationMinutes && duration < maxDurationMinutes) {
+        return { checkIn: formatMinutes(checkInMin), checkOut: formatMinutes(checkOutMin) };
+      }
+    }
+  }
+  return undefined;
+}
+
+export function validatePlannedPunchTimes(
+  checkIn: string,
+  checkOut: string,
+  rule: Pick<ScheduleRule, 'checkInWindow' | 'checkOutWindow' | 'minDurationMinutes' | 'maxDurationMinutes'>,
+): void {
+  const checkInMinutes = minutes(checkIn);
+  const checkOutMinutes = minutes(checkOut);
+  if (checkInMinutes < minutes(rule.checkInWindow.start) || checkInMinutes > minutes(rule.checkInWindow.end)) {
+    throw new Error(`Punch-in time must be within ${rule.checkInWindow.start}–${rule.checkInWindow.end}.`);
+  }
+  if (checkOutMinutes <= minutes(rule.checkOutWindow.start) || checkOutMinutes >= minutes(rule.checkOutWindow.end)) {
+    throw new Error(`Punch-out time must be after ${rule.checkOutWindow.start} and before ${rule.checkOutWindow.end}.`);
+  }
+  const duration = checkOutMinutes - checkInMinutes;
+  if (duration < rule.minDurationMinutes || duration >= rule.maxDurationMinutes) {
+    throw new Error(`Planned span must be at least ${rule.minDurationMinutes / 60} hours and less than ${rule.maxDurationMinutes / 60} hours.`);
+  }
+}
+
 export interface CheckoutGuidance {
   verifiedCheckIn: string;
   earliestCheckout: string;
@@ -97,44 +152,32 @@ export function getRandomPunchTimes(
   date: string,
   checkInWindow: { start: string; end: string },
   checkOutWindow: { start: string; end: string },
-  seedOffset = 0
+  seedOffset = 0,
+  minDurationMinutes = MIN_PLANNED_DURATION_MINUTES,
+  maxDurationMinutes = MAX_PLANNED_DURATION_MINUTES,
 ): { checkIn: string; checkOut: string } {
   const rng = seedRandom(`${date}-${seedOffset}`);
   const startIn = minutes(checkInWindow.start);
   const endIn = minutes(checkInWindow.end);
-  const startOut = minutes(checkOutWindow.start);
-  const endOut = minutes(checkOutWindow.end);
+  const startOut = minutes(checkOutWindow.start) + 1;
+  const endOut = minutes(checkOutWindow.end) - 1;
 
   for (let i = 0; i < 1000; i++) {
+    if (startOut > endOut) break;
     const checkInMin = Math.floor(rng() * (endIn - startIn + 1)) + startIn;
     const checkOutMin = Math.floor(rng() * (endOut - startOut + 1)) + startOut;
     const duration = checkOutMin - checkInMin;
-    if (duration >= 540 && duration <= 600) {
-      return {
-        checkIn: `${String(Math.floor(checkInMin / 60)).padStart(2, '0')}:${String(checkInMin % 60).padStart(2, '0')}`,
-        checkOut: `${String(Math.floor(checkOutMin / 60)).padStart(2, '0')}:${String(checkOutMin % 60).padStart(2, '0')}`,
-      };
-    }
+    if (duration >= minDurationMinutes && duration < maxDurationMinutes) return { checkIn: formatMinutes(checkInMin), checkOut: formatMinutes(checkOutMin) };
   }
 
   for (let checkInMin = startIn; checkInMin <= endIn; checkInMin++) {
     for (let checkOutMin = startOut; checkOutMin <= endOut; checkOutMin++) {
       const duration = checkOutMin - checkInMin;
-      if (duration >= 540 && duration <= 600) {
-        return {
-          checkIn: `${String(Math.floor(checkInMin / 60)).padStart(2, '0')}:${String(checkInMin % 60).padStart(2, '0')}`,
-          checkOut: `${String(Math.floor(checkOutMin / 60)).padStart(2, '0')}:${String(checkOutMin % 60).padStart(2, '0')}`,
-        };
-      }
+      if (duration >= minDurationMinutes && duration < maxDurationMinutes) return { checkIn: formatMinutes(checkInMin), checkOut: formatMinutes(checkOutMin) };
     }
   }
 
-  const fallbackCheckIn = startIn;
-  const fallbackCheckOut = Math.min(endOut, startIn + 540);
-  return {
-    checkIn: `${String(Math.floor(fallbackCheckIn / 60)).padStart(2, '0')}:${String(fallbackCheckIn % 60).padStart(2, '0')}`,
-    checkOut: `${String(Math.floor(fallbackCheckOut / 60)).padStart(2, '0')}:${String(fallbackCheckOut % 60).padStart(2, '0')}`,
-  };
+  throw new Error('Punch-in and punch-out windows cannot produce a planned span of at least 9 hours and less than 10 hours.');
 }
 
 export function checkoutGuidance(config: Config, date: string, day: DayName, now: Date, checkIn: string): CheckoutGuidance | undefined {
@@ -160,11 +203,14 @@ export function durationMinutes(checkIn: string, now: Date, timezone: string): n
 export interface NextScheduledAction {
   action: ActionType;
   date: string;
+  shift: string;
+  windowExpired?: boolean;
   windowStart: string;
   windowEnd: string;
   checkInWindow: { start: string; end: string };
   checkOutWindow: { start: string; end: string };
   punchOutWindow: { start: string; end: string };
+  plannedCheckIn: string;
   scheduleSource: string;
   availableNow: boolean;
 }
@@ -192,9 +238,12 @@ function dayForDate(date: string): DayName {
 }
 
 function punchTimesForDate(date: string, rule: ScheduleRule | DateOverride, seeds: Record<string, number>, timeOverrides: ScheduleTimeOverrides): { checkIn: string; checkOut: string } {
-  const randomized = getRandomPunchTimes(date, rule.checkInWindow, rule.checkOutWindow, seeds[date] || 0);
+  validateRule(rule);
+  const randomized = getRandomPunchTimes(date, rule.checkInWindow, rule.checkOutWindow, seeds[date] || 0, rule.minDurationMinutes, rule.maxDurationMinutes);
   const override = timeOverrides[date] || {};
-  return { checkIn: override['check-in'] || randomized.checkIn, checkOut: override['check-out'] || randomized.checkOut };
+  const planned = { checkIn: override['check-in'] || randomized.checkIn, checkOut: override['check-out'] || randomized.checkOut };
+  validatePlannedPunchTimes(planned.checkIn, planned.checkOut, rule);
+  return planned;
 }
 
 export function upcomingWorkdayForecast(config: Config, now: Date, seeds: Record<string, number> = {}, exceptions: ScheduleException[] = [], timeOverrides: ScheduleTimeOverrides = {}): ForecastDay[] {
@@ -235,22 +284,30 @@ export function nextScheduledAction(config: Config, now: Date, seeds?: Record<st
       ['check-in', { start: randomized.checkIn, end: selected.rule.checkInWindow.end }],
       ['check-out', { start: randomized.checkOut, end: selected.rule.checkOutWindow.end }],
     ];
+    let expiredToday: NextScheduledAction | undefined;
     for (const [action, window] of windows) {
       const start = minutes(window.start);
       const end = minutes(window.end);
-      if (offset === 0 && currentMinutes > end) continue;
-      return {
+      const result: NextScheduledAction = {
         action,
         date,
+        shift: selected.rule.shift,
         windowStart: window.start,
         windowEnd: window.end,
         checkInWindow: selected.rule.checkInWindow,
         checkOutWindow: selected.rule.checkOutWindow,
         punchOutWindow: { start: randomized.checkOut, end: selected.rule.checkOutWindow.end },
+        plannedCheckIn: randomized.checkIn,
         scheduleSource: selected.source,
         availableNow: offset === 0 && currentMinutes >= start && currentMinutes <= end,
       };
+      if (offset === 0 && currentMinutes > end) {
+        if (action === 'check-out') expiredToday = { ...result, windowExpired: true };
+        continue;
+      }
+      return result;
     }
+    if (expiredToday) return expiredToday;
   }
   return undefined;
 }
