@@ -1,8 +1,9 @@
 import { rigoBrowser } from './browser.js';
-import { localParts, ruleForDate, inWindow, isWithinLeadWindow, minutes, durationMinutes, addMinutesToTime, validateRule, getRandomPunchTimes } from './schedule.js';
+import { defaultConfig } from './config.js';
+import { localParts, ruleForDate, inWindow, isWithinLeadWindow, minutes, durationMinutes, addMinutesToTime, validatePlannedPunchTimes, validateRule, getRandomPunchTimes } from './schedule.js';
 import { makeId, store } from './store.js';
 import { plannedActionContext, sendNotification } from './mailer.js';
-import type { ActionType, LogEntry, PlannedAction } from './types.js';
+import type { ActionType, AttendanceRecord, LogEntry, PlannedAction } from './types.js';
 
 const timezone = () => store.config.timezone;
 const AUTO_LEAD_MINUTES = 15;
@@ -44,9 +45,10 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   if (!selected || !selected.rule.enabled) return undefined;
   validateRule(selected.rule);
   const seedOffset = store.getRandomSeed(parts.date);
-  const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+  const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset, selected.rule.minDurationMinutes, selected.rule.maxDurationMinutes);
   const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
   const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
+  validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule);
   const targetWindow = action === 'check-in'
     ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
     : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };
@@ -94,9 +96,10 @@ function eligibilityReason(action: ActionType, now: Date): string {
   if (!selected) return `${displayAction(action)}: no weekly rule or date override applies today.`;
   if (!selected.rule.enabled) return `${displayAction(action)}: today’s ${selected.source} is disabled.`;
   const seedOffset = store.getRandomSeed(parts.date);
-  const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset);
+  const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset, selected.rule.minDurationMinutes, selected.rule.maxDurationMinutes);
   const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
   const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
+  validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule);
   const targetWindow = action === 'check-in'
     ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
     : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };
@@ -120,6 +123,89 @@ export async function manualRequest(action: ActionType, now = new Date()): Promi
   const parts = localParts(now, timezone());
   log(plan ? `Automatic ${displayAction(action)} schedule prepared manually.` : `Manual request for ${displayAction(action)} was not eligible at ${parts.time}.`, { action, date: parts.date, status: plan ? 'scheduled' : 'dry_run' });
   return plan;
+}
+
+export function hardPunchDecision(action: ActionType, record: AttendanceRecord | undefined, now: Date, timezoneName: string, minDurationMinutes: number): { state: 'eligible' | 'skipped' | 'blocked'; message?: string } {
+  if (action === 'check-in' && record?.checkIn) {
+    return { state: 'skipped', message: `Hard punch-in skipped: RigoHR already recorded punch-in at ${record.checkIn}; no punch-in was submitted.` };
+  }
+  if (action === 'check-out') {
+    if (!record?.checkIn) return { state: 'blocked', message: 'Hard punch-out blocked because RigoHR has no recorded punch-in for today.' };
+    const elapsed = durationMinutes(to24Hour(record.checkIn), now, timezoneName);
+    if (elapsed < minDurationMinutes) {
+      const earliest = addMinutesToTime(to24Hour(record.checkIn), minDurationMinutes);
+      return { state: 'blocked', message: `Hard punch-out blocked until ${earliest}; only ${elapsed} minutes have elapsed since punch-in.` };
+    }
+  }
+  return { state: 'eligible' };
+}
+
+const hardPunchInProgress = new Set<ActionType>();
+
+export async function hardPunchNow(action: ActionType, now = new Date()): Promise<PlannedAction> {
+  if (hardPunchInProgress.has(action)) throw new Error(`A hard ${displayAction(action).toLowerCase()} is already in progress.`);
+  hardPunchInProgress.add(action);
+  const parts = localParts(now, timezone());
+  const selected = ruleForDate(store.config, parts.date, parts.day);
+  const fallbackRule = defaultConfig().weekly.find((rule) => rule.day === parts.day) || defaultConfig().weekly[0];
+  const safetyRule = selected?.rule || fallbackRule;
+  validateRule(safetyRule);
+  const actionId = makeId('action');
+  const scheduleSource = selected?.source || `manual ${parts.day}`;
+  const planned: PlannedAction = {
+    id: actionId,
+    date: parts.date,
+    action,
+    scheduleSource,
+    targetWindow: { start: parts.time, end: parts.time },
+    checkInWindow: safetyRule.checkInWindow,
+    checkOutWindow: safetyRule.checkOutWindow,
+    minDurationMinutes: safetyRule.minDurationMinutes,
+    maxDurationMinutes: safetyRule.maxDurationMinutes,
+    state: 'scheduled',
+    createdAt: now.toISOString(),
+    scheduledFor: now.toISOString(),
+    expiresAt: now.toISOString(),
+  };
+  let before: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+  try {
+    before = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-before`);
+    if (before.record) store.upsertAttendance(before.record);
+    log(`Hard ${displayAction(action).toLowerCase()} preflight completed; schedule window is ignored.`, { runId: actionId, action, date: parts.date, status: 'info', scheduleSource, url: before.url, observedPageState: before.pageState, observedCheckIn: before.record?.checkIn, observedCheckOut: before.record?.checkOut, screenshots: before.screenshots });
+    const decision = hardPunchDecision(action, before.record, now, timezone(), safetyRule.minDurationMinutes);
+    if (decision.state !== 'eligible') {
+      const finished = { ...planned, state: decision.state, warning: decision.message } as PlannedAction;
+      store.addAction(finished);
+      log(decision.message || `Hard ${displayAction(action).toLowerCase()} was not submitted.`, { runId: actionId, action, date: parts.date, status: decision.state, scheduleSource, observedCheckIn: before.record?.checkIn, observedCheckOut: before.record?.checkOut, verificationResult: decision.state === 'skipped' ? 'duplicate-punch-in-detected' : 'hard-punch-safety-block' });
+      await notify(finished, decision.state, decision.message || `Hard ${displayAction(action).toLowerCase()} was not submitted.`, { record: before.record, currentUrl: before.url, observedPageState: before.pageState, screenshotPaths: before.screenshots.map((s) => s.path) });
+      return finished;
+    }
+
+    store.addAction(planned);
+    log(`Hard ${displayAction(action).toLowerCase()} requested now; the configured schedule window was ignored.`, { runId: actionId, action, date: parts.date, status: 'scheduled', scheduleSource, scheduledFor: now.toISOString() });
+    store.updateAction(actionId, { state: 'clicked' });
+    const clickScreenshots = await rigoBrowser.clickPunch(action, `${actionId}-hard-now`);
+    log(`Clicked hard ${displayAction(action).toLowerCase()} now, refreshed the home page, and will verify the dashboard attendance record.`, { runId: actionId, action, date: parts.date, status: 'clicked', scheduleSource, executionAt: new Date().toISOString(), screenshots: clickScreenshots });
+    const verified = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-after`);
+    if (verified.record) store.upsertAttendance(verified.record);
+    const verifiedValue = action === 'check-in' ? verified.record?.checkIn : verified.record?.checkOut;
+    if (!verifiedValue) throw new Error(`Hard post-action verification failed: no ${displayAction(action).toLowerCase()} value was visible for ${parts.date}.`);
+    store.updateAction(actionId, { state: 'verified', checkIn: verified.record?.checkIn });
+    const message = `Hard ${displayAction(action).toLowerCase()} verified at ${verifiedValue}.`;
+    log(message, { runId: actionId, action, date: parts.date, status: 'verified', scheduleSource, url: verified.url, observedPageState: verified.pageState, observedCheckIn: verified.record?.checkIn, observedCheckOut: verified.record?.checkOut, verificationResult: verifiedValue, screenshots: verified.screenshots });
+    await notify({ ...planned, state: 'verified' }, 'verified', message, { record: verified.record, currentUrl: verified.url, observedPageState: verified.pageState, screenshotPaths: [...(before?.screenshots || []), ...verified.screenshots].map((s) => s.path) });
+    return { ...planned, state: 'verified', checkIn: verified.record?.checkIn };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown hard punch error.';
+    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+    const screenshotPath = failureScreenshots[0]?.path || (await rigoBrowser.evidence(`${actionId}-hard-${action}.png`).catch(() => '')) || undefined;
+    store.updateAction(actionId, { state: 'failed', warning: message });
+    log(message, { runId: actionId, action, date: parts.date, status: 'failed', scheduleSource, screenshotPath, screenshots: failureScreenshots.length ? failureScreenshots : undefined, errorCategory: 'hard_punch' });
+    await notify({ ...planned, state: 'failed' }, 'failed', message, { record: before?.record, currentUrl: before?.url, observedPageState: before?.pageState, screenshotPaths: [...(before?.screenshots || []), ...failureScreenshots].map((s) => s.path) });
+    throw new Error(message);
+  } finally {
+    hardPunchInProgress.delete(action);
+  }
 }
 
 export async function preview(now = new Date()): Promise<{ plans: PlannedAction[]; state: string }> {

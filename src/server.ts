@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
-import { evaluate, preview, manualRequest, executeAction, cancelAction, schedulerStatus, startScheduler } from './automation.js';
+import { evaluate, preview, manualRequest, hardPunchNow, executeAction, cancelAction, schedulerStatus, startScheduler } from './automation.js';
 import { DAYS } from './config.js';
 import { checkoutGuidance, getRandomPunchTimes, inWindow, localParts, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validateRule } from './schedule.js';
 import { makeId, store } from './store.js';
@@ -314,6 +314,15 @@ app.post('/api/manual/:action', async (req, res) => {
     const plan = await manualRequest(req.params.action);
     res.json(plan ? { state: 'scheduled', action: plan } : { state: 'outside_window_or_already_planned' });
   } catch (error) { res.status(400).json({ error: safeError(error) }); }
+});
+
+app.post('/api/punch-now/:action', async (req, res) => {
+  try {
+    if (req.params.action !== 'check-in' && req.params.action !== 'check-out') throw new Error('Invalid punch action.');
+    res.json(await hardPunchNow(req.params.action));
+  } catch (error) {
+    res.status(409).json({ error: safeError(error) });
+  }
 });
 
 app.post('/api/actions/:id/execute', async (req, res) => {
