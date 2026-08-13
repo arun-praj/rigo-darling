@@ -7,12 +7,12 @@ ENV NODE_ENV=production \
     RIGOHR_DB_PATH=/app/data/rigohr.sqlite
 
 COPY package*.json ./
-RUN npm config set fund false \
+RUN npm install --global npm@10.9.2 --no-audit --no-fund \
+    && npm config set registry https://registry.npmjs.org/ \
+    && npm config set maxsockets 1 \
+    && npm config set fund false \
     && npm config set audit false \
     && npm config set update-notifier false \
-    && npm config set fetch-retries 5 \
-    && npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
     && npm ci --no-audit --no-fund
 
 COPY tsconfig.json ./
