@@ -63,6 +63,7 @@ export class RigoBrowser {
       fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
       this.context = await chromium.launchPersistentContext(profile, {
         headless: process.env.BROWSER_HEADLESS === 'true',
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}),
         viewport: { width: 1440, height: 1000 },
       });
     }

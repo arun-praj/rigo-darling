@@ -1,11 +1,16 @@
-FROM mcr.microsoft.com/playwright:v1.55.0-noble
+FROM node:22-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 ENV NODE_ENV=production \
     BROWSER_HEADLESS=true \
     RIGOHR_DB_PATH=/app/data/rigohr.sqlite \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY package*.json ./
 RUN npm install --ignore-scripts --no-package-lock
@@ -17,9 +22,10 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 RUN mkdir -p /app/data /app/.browser-profile \
-    && chown -R pwuser:pwuser /app
+    && useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
 
-USER pwuser
+USER appuser
 EXPOSE 4317
 
 CMD ["node", "dist/server.js"]
