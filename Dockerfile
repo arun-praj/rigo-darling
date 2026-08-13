@@ -8,7 +8,7 @@ ENV NODE_ENV=production \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts --no-package-lock
 
 COPY tsconfig.json ./
 COPY src ./src
