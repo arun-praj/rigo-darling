@@ -94,17 +94,14 @@
     .next-action-layout { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-top: 13px; }
     .next-action-label { margin-bottom: 4px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .next-action-time { font-size: 22px; font-weight: 850; letter-spacing: -.04em; }
+    .next-action-recorded { margin-top: 3px; font-size: 11px; font-weight: 800; line-height: 1.35; }
+    .next-action-recorded.present { color: var(--green); }
+    .next-action-recorded.missing { color: var(--muted); }
     .next-action-window { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
     .next-action-arrow { color: #a2adbd; font-size: 18px; }
     .next-action-footer { margin-top: 13px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.4; }
-    .live-attendance-check { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
-    .live-attendance-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-    .live-attendance-title { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
-    .live-attendance-results { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-    .live-attendance-result { padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
-    .live-attendance-result-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-    .live-attendance-result-value { display: block; margin-top: 4px; color: var(--ink); font-size: 13px; font-weight: 800; }
-    .live-attendance-meta { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .next-action-controls { display: flex; align-items: center; gap: 6px; }
+    .next-action-controls .button { min-height: 28px; margin: 0; padding: 5px 9px; font-size: 11px; }
     .automatic-alert { border-color: #efc66d; background: linear-gradient(135deg, #fffaf0, #fffdf8); box-shadow: 0 8px 26px rgba(155, 97, 0, .08); }
     .automatic-alert .section-head { margin-bottom: 14px; }
     .automatic-alert .section-head h2 { display: flex; align-items: center; gap: 8px; }
@@ -352,31 +349,31 @@
 
     <section class="stats" aria-label="Current status">
       <div class="stat" style="position: relative;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px;">
           <div class="stat-label">Next action</div>
-          <button id="refreshScheduleBtn" class="button button-secondary" style="min-height: 24px; padding: 2px 8px; font-size: 10px; margin: 0; display: none;">↻ Refresh</button>
+          <div class="next-action-controls">
+            <button type="button" class="button button-secondary" id="checkLiveAttendance" title="Read today’s attendance from RigoHR without clicking either punch button.">Check attendance</button>
+            <button id="refreshScheduleBtn" class="button button-secondary" style="display: none;">↻ Refresh</button>
+          </div>
         </div>
         <div class="next-action-layout">
           <div>
             <div class="next-action-label">Punch-in</div>
             <div class="next-action-time" id="nextAction">Checking…</div>
+            <div class="next-action-recorded missing" id="nextPunchInRecorded">No punch-in recorded</div>
             <div class="next-action-window" id="nextActionWindow">Window loading…</div>
           </div>
           <div class="next-action-arrow" aria-hidden="true">→</div>
           <div>
             <div class="next-action-label">Punch-out</div>
             <div class="next-action-time" id="nextPunchOutTime">—</div>
+            <div class="next-action-recorded missing" id="nextPunchOutRecorded">No punch-out recorded</div>
             <div class="next-action-window" id="nextPunchOutWindow">Window loading…</div>
           </div>
         </div>
         <div class="stat-tertiary" id="nextDelta"></div>
         <div class="next-action-footer" id="nextActionNote">Next eligible window</div>
         <div class="stat-tertiary" id="earliestCheckout"></div>
-        <div class="live-attendance-check">
-          <div class="live-attendance-head"><span class="live-attendance-title">Recorded in RigoHR</span><button type="button" class="button button-secondary" id="checkLiveAttendance">Check attendance</button></div>
-          <div class="live-attendance-results" aria-live="polite"><div class="live-attendance-result"><span class="live-attendance-result-label">Punch-in</span><strong class="live-attendance-result-value" id="livePunchIn">Not checked yet</strong></div><div class="live-attendance-result"><span class="live-attendance-result-label">Punch-out</span><strong class="live-attendance-result-value" id="livePunchOut">Not checked yet</strong></div></div>
-          <p class="live-attendance-meta" id="liveAttendanceMeta">Reads today’s My Time and Attendance row. It does not click either punch button.</p>
-        </div>
       </div>
     </section>
 
@@ -513,9 +510,10 @@
     function syncExceptionSaveState() { const count=selectedExceptionDates.size; $('#saveExceptions').disabled=!count; $('#exceptionSelectionHelp').textContent=count?`${count} date${count===1?'':'s'} selected.`:'Select one or more future dates.'; }
     async function loadExceptions() { exceptions=await api('/api/exceptions'); const todayException=exceptions.find(exception=>exception.date===localToday()); const skipButton=$('#skipTodayBtn'); const canUnskip=todayException?.type==='skip'; const label=canUnskip?'Unskip today':todayException?titleCase(todayException.type)+' today':'Skip today'; skipButton.disabled=Boolean(todayException&&!canUnskip); skipButton.innerHTML=`<span class="button-icon" aria-hidden="true">${canUnskip?'↶':'⏭'}</span><span>${escapeHtml(label)}</span>`; skipButton.title=todayException&&!canUnskip?'Remove this leave or holiday from the calendar below.':''; renderExceptions(); renderCalendar(); }
     async function api(url, options) { const response = await fetch(url, {headers:{'Content-Type':'application/json'}, ...options}); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data; }
-    function renderLiveAttendance(result) { const record=result.record||{}; $('#livePunchIn').textContent=record.checkIn||'No punch-in recorded'; $('#livePunchOut').textContent=record.checkOut||'No punch-out recorded'; const checkedAt=new Date(result.checkedAt); const time=Number.isNaN(checkedAt.getTime())?'now':checkedAt.toLocaleTimeString('en-NP',{timeZone:'Asia/Kathmandu',hour:'2-digit',minute:'2-digit',hour12:false}); const storedAt=result.storedAt?new Date(result.storedAt).toLocaleTimeString('en-NP',{timeZone:'Asia/Kathmandu',hour:'2-digit',minute:'2-digit',hour12:false}):time; $('#liveAttendanceMeta').textContent=`Checked ${time} Nepal Time · Saved in local SQLite at ${storedAt} · ${result.pageState}`; }
-    function renderPersistedAttendance(record) { renderLiveAttendance({record, checkedAt:record.observedAt, storedAt:record.observedAt, pageState:'Loaded from persisted SQLite record'}); }
-    $('#checkLiveAttendance').onclick=async()=>{ const button=$('#checkLiveAttendance'); button.disabled=true; button.textContent='Checking…'; $('#liveAttendanceMeta').textContent='Opening the allowed RigoHR home flow, reading today’s attendance row, and saving it to SQLite…'; try { const result=await api('/api/attendance/check-live',{method:'POST'}); renderLiveAttendance(result); const record=result.record||{}; const summary=[record.checkIn?`punch-in ${record.checkIn}`:'no punch-in',record.checkOut?`punch-out ${record.checkOut}`:'no punch-out'].join(' · '); toast('RigoHR attendance checked and saved.','success'); msg(`RigoHR verified and saved: ${summary}.`); await refreshLogs(); } catch(error) { $('#liveAttendanceMeta').textContent='The live attendance check failed. See the activity log for details.'; toast(error.message,'error'); msg(error.message,'error'); } finally { button.disabled=false; button.textContent='Check attendance'; }};
+    function renderRecordedAttendance(record={}) { const entries=[['#nextPunchInRecorded',record.checkIn,'punch-in'],['#nextPunchOutRecorded',record.checkOut,'punch-out']]; entries.forEach(([selector,value,label])=>{const element=$(selector);if(!element)return;element.textContent=value?`RigoHR recorded: ${value}`:`No ${label} recorded`;element.className=`next-action-recorded ${value?'present':'missing'}`;}); }
+    function renderLiveAttendance(result) { renderRecordedAttendance(result.record||{}); }
+    function renderPersistedAttendance(record) { renderRecordedAttendance(record||{}); }
+    $('#checkLiveAttendance').onclick=async()=>{ const button=$('#checkLiveAttendance'); button.disabled=true; button.textContent='Checking…'; try { const result=await api('/api/attendance/check-live',{method:'POST'}); renderLiveAttendance(result); const record=result.record||{}; const summary=[record.checkIn?`punch-in ${record.checkIn}`:'no punch-in',record.checkOut?`punch-out ${record.checkOut}`:'no punch-out'].join(' · '); toast('RigoHR attendance checked and saved.','success'); msg(`RigoHR verified and saved: ${summary}.`); await refreshLogs(); } catch(error) { toast(error.message,'error'); msg(error.message,'error'); } finally { button.disabled=false; button.textContent='Check attendance'; }};
     async function load() { const session=await api('/api/auth/session'); currentUser=session.user; $('#userStatus').textContent=session.user.email; config=await api('/api/config'); recipients=[...(config.notificationEmails || [])]; verifiedRecipients.clear(); recipientBaseline=JSON.stringify(recipients); $('#recipientInput').value=''; renderRecipients(); renderSchedule(); renderOverrides(); await loadForecast(); await loadExceptions(); await loadAdminUsers(); await refreshStatus(); await refreshLogs(); renderPageRoute(); }
     function renderOverrides() { $('#overrides').innerHTML = config.overrides.length ? '<div class="field-label" style="margin-bottom:4px">Saved overrides</div>'+config.overrides.map(override => `<div class="override-row"><div><strong>${escapeHtml(override.date)}</strong><div class="override-detail">${escapeHtml(override.shift)} · ${escapeHtml(override.checkInWindow.start)}–${escapeHtml(override.checkInWindow.end)} in · ${escapeHtml(override.checkOutWindow.start)}–${escapeHtml(override.checkOutWindow.end)} out</div></div><button class="button button-danger" data-delete="${escapeHtml(override.date)}" style="min-height:30px;padding:6px 9px">Remove</button></div>`).join('') : '<p class="helper">No date-specific overrides saved.</p>'; document.querySelectorAll('[data-delete]').forEach(button => button.onclick=async()=>{try{await api('/api/overrides/'+button.dataset.delete,{method:'DELETE'});msg('Date override removed.');await load();}catch(error){msg(error.message,'error');}}); }
     function renderActions(actions) { const pending=actions.filter(action=>action.state==='scheduled'); const card=$('#automaticActionsCard'); if(card)card.hidden=!pending.length; $('#actions').className=pending.length?'':'approval-empty'; $('#actions').innerHTML=pending.length?pending.map(action=>`<div class="approval-card"><div class="approval-head"><span class="action-icon">${action.action==='check-in'?'↙':'↗'}</span><div class="approval-copy"><p class="eyebrow" style="margin-bottom:4px">Automatic ${actionLabel(action.action)}</p><h3>${actionLabel(action.action)} will run at ${escapeHtml(action.targetWindow.start)}</h3><p>${escapeHtml(action.date)} · ${escapeHtml(action.scheduleSource)}</p></div><span class="status-pill">Scheduled</span></div><div class="approval-meta"><span class="meta-chip">Executes at ${escapeHtml(action.targetWindow.start)} Nepal Time</span><span class="meta-chip">Minimum duration ${hours(action.minDurationMinutes)}h</span><span class="meta-chip">Cancellation available until execution</span></div><button class="button button-danger" data-cancel="${escapeHtml(action.id)}">Cancel automatic ${actionLabel(action.action).toLowerCase()}</button></div>`).join(''):'<div>No automatic actions are currently scheduled.</div><p class="helper" style="margin-top:7px">This alert appears during the 15-minute preparation window and disappears after execution or cancellation.</p>'; document.querySelectorAll('[data-cancel]').forEach(button=>button.onclick=async()=>{if(!confirm('Cancel this automatic '+button.textContent.replace('Cancel automatic ','')+' action?'))return;button.disabled=true;try{await api('/api/actions/'+button.dataset.cancel+'/cancel',{method:'POST'});msg('Automatic action cancelled.');await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');button.disabled=false;await refreshLogs();}}); }
