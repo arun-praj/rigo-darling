@@ -276,7 +276,19 @@ async function schedulerTick(): Promise<void> {
   schedulerLastError = false;
   try {
     await evaluate();
-    const due = store.actions.filter((action) => action.state === 'scheduled' && new Date(action.scheduledFor).getTime() <= Date.now());
+    const dueCandidates = store.actions.filter((action) => action.state === 'scheduled' && new Date(action.scheduledFor).getTime() <= Date.now());
+    const dueByKey = new Map<string, PlannedAction>();
+    for (const candidate of dueCandidates) {
+      const key = `${candidate.date}:${candidate.action}`;
+      const current = dueByKey.get(key);
+      if (!current || candidate.createdAt < current.createdAt) dueByKey.set(key, candidate);
+    }
+    const due = [...dueByKey.values()];
+    for (const duplicate of dueCandidates.filter((candidate) => due.every((action) => action.id !== candidate.id))) {
+      const warning = `Duplicate scheduled ${displayAction(duplicate.action).toLowerCase()} suppressed; only one automatic attempt is allowed for ${duplicate.date}.`;
+      store.updateAction(duplicate.id, { state: 'skipped', warning });
+      log(warning, { runId: duplicate.id, action: duplicate.action, date: duplicate.date, status: 'skipped', errorCategory: 'duplicate_action_suppressed' });
+    }
     for (const action of due) {
       try { await executeAction(action.id); } catch (error) { log(error instanceof Error ? error.message : 'Automatic action failed.', { runId: action.id, action: action.action, date: action.date, status: 'failed', errorCategory: 'scheduler_execution' }); }
     }
