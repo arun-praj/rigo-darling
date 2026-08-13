@@ -1,4 +1,4 @@
-FROM node:22-bookworm
+FROM node:22-trixie
 
 RUN apt-get update \
     -o Acquire::Retries=5 \
