@@ -49,6 +49,10 @@ The Compose build uses the Linux host network so Debian package installation
 also works on DietPi systems where Docker's build-time DNS cannot resolve
 package repositories.
 
+The Dockerfile uses a multi-stage build: development dependencies and
+TypeScript compilation stay in the build stage, while the final image contains
+only production dependencies, compiled application files, and Chromium.
+
 Copy `.env.example` when setting up another machine. Keep `.env` local. The first SQLite startup imports the existing `data/state.json` once; the JSON file is retained as a recoverable migration source.
 
 ## Authentication
