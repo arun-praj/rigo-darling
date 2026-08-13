@@ -42,6 +42,8 @@ The application is exposed on port `4317`. SQLite data and the persistent
 headless Chromium profile are stored in named Docker volumes. Stop it with
 `docker compose down`; use `docker compose down -v` only if you intentionally
 want to delete those volumes and all stored application data.
+Docker Compose explicitly binds the application and published port to
+`0.0.0.0`, making it reachable through the DietPi host's LAN IP.
 
 The Compose build uses the Linux host network so Debian package installation
 also works on DietPi systems where Docker's build-time DNS cannot resolve

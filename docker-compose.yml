@@ -8,11 +8,12 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      HOST: 0.0.0.0
       BROWSER_HEADLESS: "true"
       RIGOHR_DB_PATH: /app/data/rigohr.sqlite
       RIGOHR_BROWSER_PROFILE: /app/.browser-profile
     ports:
-      - "4317:4317"
+      - "0.0.0.0:4317:4317"
     volumes:
       - rigo_data:/app/data
       - rigo_browser_profile:/app/.browser-profile

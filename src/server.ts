@@ -13,6 +13,7 @@ import type { Config, DateOverride, ScheduleException, ScheduleExceptionType, Us
 
 const app = express();
 const port = Number(process.env.PORT || 4317);
+const host = process.env.HOST || '127.0.0.1';
 app.use(express.json({ limit: '100kb' }));
 
 function safeError(error: unknown): string {
@@ -297,7 +298,7 @@ app.post('/api/actions/:id/cancel', (req, res) => {
 
 app.use((_req, res) => res.sendFile(path.resolve('public/index.html')));
 
-app.listen(port, () => {
-  console.log(`RigoHR Attendance Assistant listening at http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`RigoHR Attendance Assistant listening at http://${host}:${port}`);
   startScheduler();
 });
