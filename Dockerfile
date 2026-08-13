@@ -1,6 +1,9 @@
 FROM node:22-bookworm
 
 RUN apt-get update \
+    -o Acquire::Retries=5 \
+    -o Acquire::http::Timeout=60 \
+    -o Acquire::https::Timeout=60 \
     && apt-get install -y --no-install-recommends chromium \
     && rm -rf /var/lib/apt/lists/*
 
