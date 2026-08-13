@@ -342,8 +342,7 @@ export class Store {
   }
 
   upsertAttendance(record: AttendanceRecord): void {
-    const existing = this.getAttendance(record.date);
-    this.db.prepare('INSERT INTO attendance_records(date, check_in, check_out, observed_at) VALUES (?, ?, ?, ?) ON CONFLICT(date) DO UPDATE SET check_in = COALESCE(excluded.check_in, attendance_records.check_in), check_out = COALESCE(excluded.check_out, attendance_records.check_out), observed_at = excluded.observed_at').run(record.date, record.checkIn ?? existing?.checkIn ?? null, record.checkOut ?? existing?.checkOut ?? null, new Date().toISOString());
+    this.db.prepare('INSERT INTO attendance_records(date, check_in, check_out, observed_at) VALUES (?, ?, ?, ?) ON CONFLICT(date) DO UPDATE SET check_in = excluded.check_in, check_out = excluded.check_out, observed_at = excluded.observed_at').run(record.date, record.checkIn ?? null, record.checkOut ?? null, new Date().toISOString());
   }
 
   get exceptions(): ScheduleException[] {
