@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in · RigoHR Attendance</title>
+  <style>
+    :root { color-scheme: light; --bg:#f6f8fb; --surface:#fff; --ink:#172033; --muted:#68758a; --line:#e3e8ef; --blue:#275de4; --blue-soft:#edf3ff; --red:#b42318; --red-soft:#fff1ef; font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    * { box-sizing:border-box; } body { min-width:320px; min-height:100vh; margin:0; display:grid; place-items:center; padding:24px; color:var(--ink); background:radial-gradient(circle at 80% -20%,#eaf1ff 0,transparent 38%),var(--bg); }
+    .card { width:min(420px,100%); padding:30px; border:1px solid var(--line); border-radius:18px; background:rgba(255,255,255,.94); box-shadow:0 18px 50px rgba(29,47,78,.09); }
+    .brand { display:flex; align-items:center; gap:11px; margin-bottom:30px; font-size:19px; font-weight:850; letter-spacing:-.03em; } .mark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; color:#fff; background:linear-gradient(145deg,#356cf1,#1744bb); font-size:18px; }
+    h1 { margin:0 0 8px; font-size:28px; letter-spacing:-.045em; } .intro { margin:0 0 24px; color:var(--muted); line-height:1.5; font-size:14px; }
+    label { display:block; margin:0 0 7px; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; } .field { margin-bottom:15px; }
+    input { width:100%; min-height:43px; padding:10px 11px; border:1px solid #cfd7e3; border-radius:9px; color:var(--ink); background:#fff; font:inherit; outline:0; } input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(39,93,228,.12); }
+    button { width:100%; min-height:43px; padding:10px 14px; border:0; border-radius:9px; color:#fff; background:var(--blue); font:inherit; font-weight:800; cursor:pointer; } button:disabled { cursor:wait; opacity:.6; }
+    .error { min-height:0; margin-bottom:15px; padding:10px 11px; border:1px solid #f2c5c0; border-radius:9px; color:var(--red); background:var(--red-soft); font-size:13px; line-height:1.45; } .error:empty { display:none; }
+    .note { margin:18px 0 0; color:var(--muted); font-size:12px; line-height:1.5; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span class="mark">R</span><span>RigoHR Attendance</span></div>
+    <h1>Sign in</h1>
+    <p class="intro">Access your attendance schedule, automatic punches, and activity evidence.</p>
+    <div id="error" class="error" role="alert" aria-live="polite"></div>
+    <form id="loginForm">
+      <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required autofocus></div>
+      <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+      <button id="submit" type="submit">Sign in</button>
+    </form>
+    <p class="note">Your session remains active for one year unless you explicitly sign out.</p>
+  </main>
+  <script>
+    const form=document.querySelector('#loginForm'), error=document.querySelector('#error'), submit=document.querySelector('#submit');
+    form.addEventListener('submit',async event=>{event.preventDefault();error.textContent='';submit.disabled=true;try{const body={email:form.email.value,password:form.password.value};const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Unable to sign in.');window.location.assign('/');}catch(err){error.textContent=err.message;submit.disabled=false;}});
+  </script>
+</body>
+</html>

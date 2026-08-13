@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RigoHR · Attendance operations</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --surface-soft: #f9fafc;
+      --ink: #172033;
+      --muted: #68758a;
+      --line: #e3e8ef;
+      --blue: #275de4;
+      --blue-soft: #edf3ff;
+      --green: #087f63;
+      --green-soft: #eaf8f3;
+      --amber: #9b6100;
+      --amber-soft: #fff7e5;
+      --red: #b42318;
+      --red-soft: #fff1ef;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: radial-gradient(circle at 80% -20%, #eaf1ff 0, transparent 34%), var(--bg); color: var(--ink); }
+    button, input, select { font: inherit; }
+    button { border: 0; cursor: pointer; }
+    .shell { width: min(1320px, calc(100% - 48px)); margin: 0 auto; padding: 24px 0 56px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 28px; }
+    .brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; font-weight: 800; letter-spacing: -.02em; }
+    .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: white; background: linear-gradient(145deg, #356cf1, #1744bb); box-shadow: 0 5px 12px rgba(39, 93, 228, .22); font-size: 16px; }
+    .topbar-right { display: flex; align-items: center; gap: 18px; }
+    .header-status { display: flex; align-items: center; gap: 8px; }
+    .header-status-item { display: flex; align-items: baseline; gap: 7px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.72); }
+    .header-status-label { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .header-status-value { color: var(--ink); font-size: 13px; font-weight: 800; }
+    .topbar-meta { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+    .topbar-email { max-width: 260px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .user-status { max-width: 180px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .scheduler-status { min-width: 15px; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); transition: background .18s ease, box-shadow .18s ease; }
+    .live-dot.warning { background: var(--amber); box-shadow: 0 0 0 4px var(--amber-soft); }
+    .live-dot.error, .live-dot.inactive { background: var(--red); box-shadow: 0 0 0 4px var(--red-soft); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .menu-button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; color: #214ba8; background: rgba(255,255,255,.78); font-size: 13px; font-weight: 800; }
+    .menu-button:hover { border-color: #9db9f5; background: var(--blue-soft); }
+    .menu-icon { font-size: 17px; line-height: 1; }
+    .drawer-backdrop { position: fixed; z-index: 1090; inset: 0; background: rgba(22, 34, 55, .38); opacity: 1; transition: opacity .18s ease; }
+    .drawer-backdrop[hidden] { display: block; opacity: 0; pointer-events: none; visibility: hidden; }
+    .account-drawer { position: fixed; z-index: 1100; top: 0; bottom: 0; left: 0; display: flex; flex-direction: column; width: min(360px, calc(100% - 28px)); padding: 24px; border-right: 1px solid #dbe3f1; color: var(--ink); background: var(--surface); box-shadow: 18px 0 46px rgba(29, 47, 78, .16); visibility: hidden; transform: translateX(-105%); transition: transform .22s ease, visibility 0s linear .22s; }
+    .account-drawer.open { visibility: visible; transform: translateX(0); transition-delay: 0s; }
+    .drawer-head { display: flex; align-items: start; justify-content: space-between; gap: 15px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+    .drawer-kicker { margin: 0 0 6px; color: var(--blue); font-size: 11px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    .drawer-title { margin: 0; font-size: 22px; letter-spacing: -.035em; }
+    .drawer-close { display: grid; place-items: center; flex: 0 0 auto; width: 36px; height: 36px; border: 1px solid #cbd7eb; border-radius: 10px; color: #214ba8; background: var(--blue-soft); font-size: 24px; line-height: 1; }
+    .drawer-close:hover { border-color: #9db9f5; background: #e3ecff; }
+    .drawer-summary { display: grid; gap: 15px; margin: 22px 0; }
+    .drawer-field { padding: 12px 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
+    .drawer-label { margin-bottom: 5px; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .drawer-value { overflow-wrap: anywhere; color: var(--ink); font-size: 14px; font-weight: 750; line-height: 1.4; }
+    .drawer-nav { display: grid; gap: 7px; padding-top: 5px; border-top: 1px solid var(--line); }
+    .drawer-nav-label { margin: 17px 0 4px; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .drawer-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid transparent; border-radius: 10px; color: var(--ink); background: transparent; font-size: 13px; font-weight: 750; text-decoration: none; }
+    .drawer-link:hover { border-color: #cbd9f3; color: #214ba8; background: var(--blue-soft); }
+    .drawer-link-arrow { color: #8da1c5; font-size: 18px; line-height: 1; }
+    .drawer-logout { width: 100%; margin-top: auto; }
+    .page-header { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.78); }
+    .page-header[hidden] { display: none; }
+    .stats[hidden], .card[hidden] { display: none; }
+    .page-eyebrow { margin: 0 0 6px; color: var(--blue); font-size: 11px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    .page-title { margin: 0 0 6px; font-size: clamp(23px, 4vw, 30px); letter-spacing: -.04em; }
+    .page-description { max-width: 680px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .page-back { flex: 0 0 auto; }
+    .layout.page-layout { display: block; max-width: 860px; }
+    .layout.page-layout > section { margin-bottom: 16px; }
+    .hero { display: flex; justify-content: space-between; align-items: end; gap: 28px; margin-bottom: 24px; }
+    .eyebrow { margin: 0 0 9px; color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: clamp(28px, 4vw, 40px); line-height: 1.05; letter-spacing: -.045em; }
+    h2 { margin-bottom: 5px; font-size: 17px; letter-spacing: -.02em; }
+    h3 { margin-bottom: 3px; font-size: 15px; }
+    .hero-copy { max-width: 650px; }
+    .hero-copy p, .section-description { color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .timezone-badge { flex: 0 0 auto; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: rgba(255,255,255,.72); font-size: 12px; font-weight: 700; }
+    .stats { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 18px; }
+    .stat { min-height: 104px; padding: 16px 17px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.82); box-shadow: 0 8px 26px rgba(29, 47, 78, .035); }
+    .stat-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .stat-value { margin-top: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
+    .stat-secondary { margin-top: 5px; color: var(--ink); font-size: 12px; font-weight: 750; }
+    .stat-tertiary { margin-top: 4px; color: var(--amber); font-size: 11px; font-weight: 750; line-height: 1.35; }
+    .stat-note { margin-top: 5px; color: var(--muted); font-size: 12px; }
+    .next-action-layout { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-top: 13px; }
+    .next-action-label { margin-bottom: 4px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .next-action-time { font-size: 22px; font-weight: 850; letter-spacing: -.04em; }
+    .next-action-window { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .next-action-arrow { color: #a2adbd; font-size: 18px; }
+    .next-action-footer { margin-top: 13px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .live-attendance-check { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
+    .live-attendance-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .live-attendance-title { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+    .live-attendance-results { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .live-attendance-result { padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+    .live-attendance-result-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .live-attendance-result-value { display: block; margin-top: 4px; color: var(--ink); font-size: 13px; font-weight: 800; }
+    .live-attendance-meta { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .automatic-alert { border-color: #efc66d; background: linear-gradient(135deg, #fffaf0, #fffdf8); box-shadow: 0 8px 26px rgba(155, 97, 0, .08); }
+    .automatic-alert .section-head { margin-bottom: 14px; }
+    .automatic-alert .section-head h2 { display: flex; align-items: center; gap: 8px; }
+    .automatic-alert .section-head h2::before { content: '!'; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; background: var(--amber); font-size: 13px; font-weight: 900; }
+    .automatic-alert .section-description { color: #79551b; }
+    .automatic-alert .approval-card { border-color: #efc66d; background: rgba(255,255,255,.78); }
+    .automatic-alert .status-pill { color: #7d4e00; background: #ffedbd; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr); gap: 16px; align-items: start; }
+    .wide { grid-column: 1 / -1; }
+    .card { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 26px rgba(29, 47, 78, .045); }
+    .section-head { display: flex; justify-content: space-between; align-items: start; gap: 18px; margin-bottom: 18px; }
+    .section-head p { max-width: 650px; margin-bottom: 0; }
+    .section-kicker { color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .section-actions { display: flex; align-items: center; gap: 12px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; min-width: 940px; border-collapse: collapse; font-size: 13px; }
+    th { padding: 11px 14px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--surface-soft); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-align: left; text-transform: uppercase; }
+    td { padding: 12px 14px; border-bottom: 1px solid #eef1f5; vertical-align: middle; }
+    tr:last-child td { border-bottom: 0; }
+    .day-cell { display: flex; align-items: center; gap: 9px; font-weight: 750; }
+    .day-index { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 7px; color: var(--blue); background: var(--blue-soft); font-size: 11px; font-weight: 800; }
+    .shift-select { min-width: 102px; }
+    .window { display: grid; grid-template-columns: 95px 10px 95px; align-items: center; gap: 6px; }
+    .window-separator { color: #9aa6b8; text-align: center; }
+    input, select { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #cfd7e3; border-radius: 8px; outline: none; color: var(--ink); background: #fff; font-size: 13px; }
+    input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(39, 93, 228, .12); }
+    input[type="checkbox"] { width: 17px; min-height: 17px; accent-color: var(--blue); }
+    .duration-input { width: 72px; }
+    .field-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .form-stack { display: grid; gap: 14px; }
+    .recipient-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-height: 42px; padding: 6px 8px; border: 1px solid #cfd7e3; border-radius: 8px; background: #fff; }
+    #recipientChips { display: contents; }
+    .recipient-editor:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(39, 93, 228, .12); }
+    .recipient-editor input { flex: 1 1 180px; width: auto; min-height: 27px; padding: 3px 4px; border: 0; box-shadow: none; }
+    .recipient-editor input:focus { border: 0; box-shadow: none; }
+    .recipient-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px; border-radius: 999px; color: #214ba8; background: var(--blue-soft); font-size: 12px; }
+    .recipient-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recipient-verified { color: var(--green); font-weight: 900; }
+    .recipient-remove { width: 18px; height: 18px; border-radius: 50%; color: #214ba8; background: transparent; font-size: 16px; line-height: 16px; }
+    .recipient-remove:hover { background: rgba(39, 93, 228, .14); }
+    .admin-users { display: grid; gap: 10px; }
+    .admin-user-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eef1f5; font-size: 13px; }
+    .admin-user-row:last-child { border-bottom: 0; }
+    .role-pill { padding: 4px 7px; border-radius: 999px; color: #214ba8; background: var(--blue-soft); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .helper { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .button { min-height: 38px; padding: 9px 14px; border-radius: 9px; font-size: 13px; font-weight: 800; transition: transform .16s ease, box-shadow .16s ease, background .16s ease; }
+    .button:hover { transform: translateY(-1px); box-shadow: 0 5px 12px rgba(29, 47, 78, .12); }
+    .button[hidden] { display: none; }
+    .button-primary { color: white; background: var(--blue); }
+    .button-secondary { color: #214ba8; background: var(--blue-soft); }
+    .button-quiet { color: var(--muted); background: transparent; }
+    .button-danger { color: var(--red); background: var(--red-soft); }
+    .button-warning { color: #7a5000; border: 1px solid #dfb45c; background: #fff3d6; box-shadow: 0 2px 0 #d5a74a; }
+    .button-warning:hover { background: #ffedc2; box-shadow: 0 4px 10px rgba(155, 97, 0, .16); }
+    #skipTodayBtn { min-width: 108px; font-weight: 850; }
+    #skipTodayBtn .button-icon { display: inline-block; margin-right: 6px; font-size: 15px; line-height: 1; vertical-align: -1px; }
+    dialog { width: min(440px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 16px; color: var(--ink); background: var(--surface); box-shadow: 0 24px 70px rgba(29, 47, 78, .24); }
+    dialog::backdrop { background: rgba(22, 34, 55, .42); backdrop-filter: blur(2px); }
+    .dialog-body { padding: 22px; }
+    .dialog-body h2 { margin: 0 0 8px; font-size: 18px; }
+    .dialog-body p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
+    .calendar-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .calendar-month { font-size: 14px; font-weight: 800; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+    .calendar-weekday { padding: 5px 0; color: var(--muted); font-size: 10px; font-weight: 800; text-align: center; text-transform: uppercase; }
+    .calendar-weekday.weekend { color: var(--red); }
+    .calendar-day { min-height: 39px; padding: 6px 3px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); font-size: 12px; font-weight: 700; }
+    .calendar-day:hover { border-color: #9db9f5; background: var(--blue-soft); }
+    .calendar-day.outside { border-color: transparent; color: #b7c0cc; background: transparent; }
+    .calendar-day.past { color: #b7c0cc; background: #f6f7f9; cursor: not-allowed; }
+    .calendar-day.weekend { border-color: #f2c5c0; color: var(--red); background: var(--red-soft); }
+    .calendar-day.outside.weekend { border-color: transparent; color: #e5aaa3; background: transparent; }
+    .calendar-day.selected { border-color: var(--blue); color: white; background: var(--blue); }
+    .calendar-day.existing-leave { border-color: #9ed9c0; color: var(--green); background: var(--green-soft); }
+    .calendar-day.existing-holiday { border-color: #e8c989; color: var(--amber); background: var(--amber-soft); }
+    .calendar-day.existing-skip { border-color: #e5aaa3; color: var(--red); background: var(--red-soft); }
+    .calendar-day.selected.existing-leave, .calendar-day.selected.existing-holiday { color: white; background: var(--blue); }
+    .exception-list { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
+    .exception-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eef1f5; font-size: 13px; }
+    .exception-row:last-child { border-bottom: 0; }
+    .exception-type { display: inline-block; margin-right: 6px; padding: 3px 6px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .exception-type.leave { color: var(--green); background: var(--green-soft); }
+    .exception-type.holiday { color: var(--amber); background: var(--amber-soft); }
+    .exception-type.skip { color: var(--red); background: var(--red-soft); }
+    .message { min-height: 0; margin-bottom: 15px; }
+    .message:empty { display: none; }
+    .notice { padding: 12px 14px; border: 1px solid #d9e5ff; border-radius: 10px; color: #214ba8; background: var(--blue-soft); font-size: 13px; line-height: 1.45; }
+    .notice.warning { border-color: #f2dfb1; color: var(--amber); background: var(--amber-soft); }
+    .notice.error { border-color: #f2c5c0; color: var(--red); background: var(--red-soft); }
+    .toast-region { position: fixed; z-index: 1000; top: 18px; right: 18px; display: grid; gap: 8px; width: min(360px, calc(100% - 36px)); pointer-events: none; }
+    .toast { padding: 12px 14px; border: 1px solid #d9e5ff; border-radius: 10px; color: #214ba8; background: rgba(255,255,255,.97); box-shadow: 0 12px 30px rgba(29, 47, 78, .16); font-size: 13px; line-height: 1.45; pointer-events: auto; }
+    .toast.success { border-color: #b9e7d8; color: var(--green); background: #f3fcf8; }
+    .toast.warning { border-color: #f2dfb1; color: var(--amber); background: #fffaf0; }
+    .toast.error { border-color: #f2c5c0; color: var(--red); background: #fff7f5; }
+    .history-view { position: fixed; z-index: 900; inset: 0; overflow: auto; padding: 24px; background: radial-gradient(circle at 85% 0%, #eaf1ff 0, transparent 34%), var(--bg); }
+    .history-view[hidden] { display: none; }
+    .history-shell { width: min(1180px, 100%); margin: 0 auto; }
+    .history-topbar { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+    .history-kicker { margin-bottom: 7px; color: var(--blue); font-size: 11px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    .history-title { margin: 0; font-size: clamp(25px, 4vw, 38px); letter-spacing: -.045em; }
+    .history-subtitle { max-width: 680px; margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .history-close { display: grid; place-items: center; flex: 0 0 auto; width: 42px; height: 42px; border: 1px solid #cbd7eb; border-radius: 12px; color: #214ba8; background: rgba(255,255,255,.78); font-size: 27px; line-height: 1; }
+    .history-close:hover { border-color: #9db9f5; background: var(--blue-soft); }
+    .history-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr); gap: 16px; align-items: start; }
+    .history-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 26px rgba(29, 47, 78, .045); }
+    .history-calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+    .history-month { margin: 0; font-size: 18px; }
+    .history-nav { display: flex; gap: 7px; }
+    .history-nav .button { min-height: 32px; padding: 6px 10px; }
+    .history-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+    .history-weekday { padding: 5px 0; color: var(--muted); font-size: 10px; font-weight: 850; text-align: center; text-transform: uppercase; }
+    .history-weekday.weekend { color: var(--red); }
+    .history-date { min-height: 74px; padding: 8px 7px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--surface); text-align: left; }
+    .history-date:hover { border-color: #9db9f5; background: var(--blue-soft); }
+    .history-date.outside { border-color: transparent; color: #b7c0cc; background: transparent; }
+    .history-date.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(39,93,228,.13); }
+    .history-date-number { display: block; font-size: 13px; font-weight: 850; }
+    .history-date-dot { display: block; width: 8px; height: 8px; margin-top: 9px; border-radius: 50%; background: #c5cfdd; box-shadow: 0 0 0 3px #eef1f5; }
+    .history-date-dot.success { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+    .history-date-dot.error { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+    .history-date-dot.cancelled { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+    .history-date-dot.info { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+    .history-date-tag { display: block; max-width: 100%; margin-top: 8px; overflow: hidden; color: var(--muted); font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .history-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; color: var(--muted); font-size: 11px; }
+    .history-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .history-legend .history-date-dot { display: inline-block; width: 7px; height: 7px; margin: 0; box-shadow: none; }
+    .history-detail-empty { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .history-detail-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .history-detail-date { margin: 0; font-size: 21px; letter-spacing: -.03em; }
+    .history-detail-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; font-size: 10px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+    .history-detail-status.success { color: var(--green); background: var(--green-soft); }
+    .history-detail-status.error { color: var(--red); background: var(--red-soft); }
+    .history-detail-status.cancelled { color: var(--amber); background: var(--amber-soft); }
+    .history-detail-status.info { color: #214ba8; background: var(--blue-soft); }
+    .history-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+    .history-tag { padding: 5px 8px; border-radius: 7px; color: var(--muted); background: #eef1f5; font-size: 11px; font-weight: 750; }
+    .history-detail-section { margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--line); }
+    .history-detail-section h3 { margin-bottom: 9px; font-size: 13px; }
+    .history-proof-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .history-proof { margin: 0; }
+    .history-proof a { display: block; }
+    .history-proof img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+    .history-proof figcaption { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .history-events { display: grid; gap: 8px; max-height: 300px; overflow: auto; }
+    .history-event { padding: 9px 10px; border-radius: 9px; background: var(--surface-soft); }
+    .history-event-top { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+    .history-event-status { font-weight: 850; text-transform: uppercase; }
+    .history-event-message { margin-top: 4px; font-size: 12px; line-height: 1.4; }
+    .override-list { margin-top: 19px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .override-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid #eef1f5; font-size: 13px; }
+    .override-row:last-child { border-bottom: 0; }
+    .override-detail { color: var(--muted); font-size: 12px; }
+    .forecast-list { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; }
+    .forecast-row { display: grid; grid-template-columns: minmax(130px, 1.1fr) minmax(170px, 1fr) minmax(170px, 1fr) 145px; align-items: center; gap: 12px; padding: 13px 14px; border-bottom: 1px solid #eef1f5; }
+    .forecast-row:last-child { border-bottom: 0; }
+    .forecast-day { display: flex; align-items: center; gap: 9px; font-weight: 750; }
+    .forecast-date { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .forecast-time { display: grid; min-width: 0; gap: 3px; }
+    .forecast-time-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+    .forecast-time-value { font-size: 16px; font-weight: 850; }
+    .forecast-window { min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .forecast-status { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .forecast-status.holiday, .forecast-status.leave { color: var(--amber); }
+    .forecast-status.off, .forecast-status.skip { color: var(--red); }
+    .forecast-row.forecast-holiday { background: #fff9eb; }
+    .forecast-row.forecast-leave { background: #eefaf5; }
+    .forecast-row.forecast-skip { background: #fff3f1; }
+    .forecast-row.forecast-off { background: #f7f8fa; }
+    .forecast-row.forecast-holiday .forecast-status { color: var(--amber); }
+    .forecast-row.forecast-leave .forecast-status { color: var(--green); }
+    .forecast-row.forecast-skip .forecast-status { color: var(--red); }
+    .forecast-action { display: flex; justify-content: flex-end; }
+    .forecast-action select { min-height: 36px; padding: 8px 34px 8px 12px; border-color: #c6d4ed; border-radius: 10px; color: #214ba8; background-color: var(--blue-soft); background-image: linear-gradient(45deg, transparent 50%, #5472a5 50%), linear-gradient(135deg, #5472a5 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-repeat: no-repeat; background-size: 5px 5px, 5px 5px; font-size: 12px; font-weight: 800; appearance: none; -webkit-appearance: none; cursor: pointer; }
+    .forecast-action select:hover { border-color: #9db9f5; background-color: #e4edff; }
+    .editor-panel { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .editor-panel[hidden] { display: none; }
+    .approval-empty { padding: 21px 0 4px; color: var(--muted); font-size: 13px; }
+    .approval-card { padding: 15px; border: 1px solid #d9e5ff; border-radius: 12px; background: linear-gradient(135deg, #f6f9ff, #fff); }
+    .approval-head { display: flex; align-items: start; gap: 11px; }
+    .action-icon { display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 9px; color: var(--blue); background: var(--blue-soft); font-size: 17px; font-weight: 800; }
+    .approval-copy { min-width: 0; flex: 1; }
+    .approval-copy p { margin: 0; color: var(--muted); font-size: 12px; }
+    .status-pill { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: var(--amber); background: var(--amber-soft); font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+    .approval-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; color: var(--muted); font-size: 12px; }
+    .meta-chip { padding: 5px 8px; border-radius: 7px; background: #f0f3f8; }
+    .log-toolbar { display: flex; gap: 9px; margin-bottom: 8px; }
+    .log-toolbar input { max-width: 170px; }
+    .log-toolbar select { max-width: 180px; }
+    .log { border-top: 1px solid #eef1f5; }
+    .log:first-child { border-top: 0; }
+    .log summary { display: flex; align-items: center; gap: 9px; padding: 14px 3px; cursor: pointer; list-style: none; font-size: 13px; }
+    .log summary::-webkit-details-marker { display: none; }
+    .log summary::before { content: '›'; color: #9aa6b8; font-size: 18px; transition: transform .15s ease; }
+    .log[open] summary::before { transform: rotate(90deg); }
+    .log-status { padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .log-status.verified { color: var(--green); background: var(--green-soft); }
+    .log-status.failed, .log-status.blocked { color: var(--red); background: var(--red-soft); }
+    .log-status.waiting_confirmation { color: var(--amber); background: var(--amber-soft); }
+    .log-status.scheduled { color: #214ba8; background: var(--blue-soft); }
+    .log-status.info, .log-status.dry_run { color: var(--muted); background: #eef1f5; }
+    .log-summary-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-action-label { display: block; margin-bottom: 2px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .log-message { display: block; overflow: hidden; text-overflow: ellipsis; }
+    .log-detail-label { color: var(--ink); font-weight: 800; }
+    .log-date { color: var(--muted); font-size: 12px; }
+    .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .pagination-label { color: var(--muted); font-size: 12px; }
+    .pagination .button { min-height: 32px; padding: 7px 10px; }
+    .button:disabled { cursor: not-allowed; opacity: .45; transform: none; box-shadow: none; }
+    .log-details { padding: 0 20px 16px 30px; }
+    .log-meta { margin: 3px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .evidence-note { margin-top: 12px; padding: 9px 11px; border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: 12px; line-height: 1.45; }
+    .screenshots { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    .screenshots figure { width: min(340px, 100%); margin: 0; }
+    .screenshots img { display: block; width: 100%; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+    .screenshots figcaption { margin-top: 5px; color: var(--muted); font-size: 11px; }
+    code { display: block; margin-top: 8px; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
+    @media (max-width: 1120px) { .topbar-right { gap: 10px; } .header-status { gap: 5px; } .header-status-item { padding: 6px 8px; } }
+    @media (max-width: 1000px) { .stats { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
+    @media (max-width: 650px) { .shell { width: min(100% - 28px, 1320px); padding-top: 16px; } .topbar, .hero { display: block; } .topbar-right { flex-wrap: wrap; justify-content: space-between; margin-top: 14px; } .header-status-item { padding: 6px 8px; } .topbar-meta { font-size: 12px; } .topbar-email { flex-basis: 100%; max-width: none; margin-top: 3px; text-align: right; } .stats { grid-template-columns: 1fr; gap: 8px; } .stat { min-height: 92px; padding: 13px; } .stat-value { font-size: 17px; } .card { padding: 16px; border-radius: 13px; } .section-head { display: block; } .section-actions { justify-content: space-between; margin-top: 10px; } .section-kicker { display: block; } .form-grid { grid-template-columns: 1fr; } .forecast-row { grid-template-columns: minmax(104px, .9fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 12px; } .forecast-action { grid-column: 1 / -1; justify-content: flex-start; } .forecast-action select { width: 100%; } .forecast-time-value { font-size: 15px; } .forecast-window { font-size: 10px; white-space: nowrap; } .live-attendance-head { align-items: flex-start; flex-direction: column; } .live-attendance-head .button { width: 100%; } .live-attendance-results { grid-template-columns: 1fr; } .log-toolbar { flex-wrap: wrap; } .log-toolbar input, .log-toolbar select { max-width: none; flex: 1; } .log summary { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: start; gap: 7px; } .log-summary-text { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.4; } .log-date { grid-column: 3; margin-left: 0; } .pagination { align-items: stretch; flex-direction: column; } .pagination .actions { justify-content: space-between; } .toast-region { top: 12px; right: 14px; left: 14px; width: auto; } .history-view { padding: 16px 12px; } .history-topbar { gap: 10px; } .history-layout { grid-template-columns: 1fr; } .history-card { padding: 15px; } .history-date { min-height: 65px; padding: 7px 5px; } .history-proof-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 390px) { .forecast-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .forecast-day { grid-column: 1 / -1; } .forecast-window { font-size: 10px; } }
+    @media (max-width: 650px) { .exception-section-head { display: flex; align-items: center; } .exception-section-head .section-actions { flex: 0 0 auto; margin-top: 0; } }
+  </style>
+</head>
+<body>
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <main class="shell">
+    <nav class="topbar" aria-label="Application header">
+      <a class="brand" href="/" aria-label="RigoHR Attendance home"><span class="brand-mark">R</span><span>RigoHR Attendance</span></a>
+      <div class="topbar-right"><div class="header-status" aria-label="Current local status"><div class="header-status-item"><span class="header-status-label">Local</span><strong class="header-status-value" id="now">Loading…</strong></div><div class="header-status-item"><span class="header-status-label">Today</span><strong class="header-status-value" id="schedule">Checking…</strong></div></div><div class="topbar-meta scheduler-status" id="schedulerStatus" aria-label="Checking scheduler" title="Checking scheduler"><span class="live-dot warning" id="schedulerDot" aria-hidden="true"></span><span class="sr-only" id="schedulerStatusText">Checking scheduler</span></div><button type="button" class="button button-warning" id="skipTodayBtn">Skip today</button><button type="button" class="menu-button" id="openAccountDrawer" aria-expanded="false" aria-controls="accountDrawer"><span class="menu-icon" aria-hidden="true">☰</span><span>Menu</span></button></div>
+    </nav>
+    <button type="button" class="drawer-backdrop" id="drawerBackdrop" aria-label="Close account menu" hidden></button>
+    <aside class="account-drawer" id="accountDrawer" aria-hidden="true" aria-labelledby="accountDrawerTitle" inert>
+      <div class="drawer-head"><div><p class="drawer-kicker">RigoHR account</p><h2 class="drawer-title" id="accountDrawerTitle">Account & notifications</h2></div><button type="button" class="drawer-close" id="closeAccountDrawer" aria-label="Close account menu">×</button></div>
+      <div class="drawer-summary"><div class="drawer-field"><div class="drawer-label">Signed in as</div><div class="drawer-value user-status" id="userStatus">Loading…</div></div><div class="drawer-field"><div class="drawer-label">Configured email</div><div class="drawer-value topbar-email" id="emailStatus">Email notifications off</div></div></div>
+      <nav class="drawer-nav" aria-label="Settings pages"><div class="drawer-nav-label">Settings</div><a class="drawer-link" href="/settings/email" data-page-link="email">Email notifications <span class="drawer-link-arrow" aria-hidden="true">→</span></a><a class="drawer-link" href="/settings/date-override" data-page-link="date-override">Date override <span class="drawer-link-arrow" aria-hidden="true">→</span></a><a class="drawer-link" href="/settings/admin-users" data-page-link="admin-users" id="adminUsersLink" hidden>Admin user management <span class="drawer-link-arrow" aria-hidden="true">→</span></a></nav>
+      <button type="button" class="button button-danger drawer-logout" id="logout">Logout</button>
+    </aside>
+
+    <div id="message" class="message" role="status" aria-live="polite"></div>
+    <section class="page-header" id="pageHeader" hidden aria-labelledby="pageTitle"><div><p class="page-eyebrow" id="pageEyebrow">Settings</p><h1 class="page-title" id="pageTitle"></h1><p class="page-description" id="pageDescription"></p></div></section>
+
+    <section class="stats" aria-label="Current status">
+      <div class="stat" style="position: relative;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <div class="stat-label">Next action</div>
+          <button id="refreshScheduleBtn" class="button button-secondary" style="min-height: 24px; padding: 2px 8px; font-size: 10px; margin: 0; display: none;">↻ Refresh</button>
+        </div>
+        <div class="next-action-layout">
+          <div>
+            <div class="next-action-label" id="nextActionLabel">Punch-in</div>
+            <div class="next-action-time" id="nextAction">Checking…</div>
+            <div class="next-action-window" id="nextActionWindow">Window loading…</div>
+          </div>
+          <div class="next-action-arrow" aria-hidden="true">→</div>
+          <div>
+            <div class="next-action-label">Punch-out</div>
+            <div class="next-action-time" id="nextPunchOutTime">—</div>
+            <div class="next-action-window" id="nextPunchOutWindow">Window loading…</div>
+          </div>
+        </div>
+        <div class="stat-tertiary" id="nextDelta"></div>
+        <div class="next-action-footer" id="nextActionNote">Next eligible window</div>
+        <div class="stat-tertiary" id="earliestCheckout"></div>
+        <div class="live-attendance-check">
+          <div class="live-attendance-head"><span class="live-attendance-title">Recorded in RigoHR</span><button type="button" class="button button-secondary" id="checkLiveAttendance">Check attendance</button></div>
+          <div class="live-attendance-results" aria-live="polite"><div class="live-attendance-result"><span class="live-attendance-result-label">Punch-in</span><strong class="live-attendance-result-value" id="livePunchIn">Not checked yet</strong></div><div class="live-attendance-result"><span class="live-attendance-result-label">Punch-out</span><strong class="live-attendance-result-value" id="livePunchOut">Not checked yet</strong></div></div>
+          <p class="live-attendance-meta" id="liveAttendanceMeta">Reads today’s My Time and Attendance row. It does not click either punch button.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card wide automatic-alert" id="automaticActionsCard" hidden role="region" aria-labelledby="automaticActionsTitle">
+      <div class="section-head"><div><p class="eyebrow" style="color:var(--amber); margin-bottom:5px">Action scheduled</p><h2 id="automaticActionsTitle">Automatic attendance alert</h2><p class="section-description">The assistant will submit the scheduled punch automatically. Cancel it below before the execution time if you do not want it submitted.</p></div></div>
+      <div id="actions" class="approval-empty"></div>
+    </section>
+
+    <div class="layout">
+      <section class="card wide">
+        <div class="section-head"><div><h2>Activity log</h2><p class="section-description">Every evaluation, approval, browser action, verification, and error is recorded here.</p></div><div class="section-actions"><span class="section-kicker">Click a row to inspect evidence</span><button type="button" class="button button-secondary" id="seeHistory">See history</button></div></div>
+        <div class="log-toolbar"><input id="logDate" type="date" aria-label="Filter logs by date"><select id="logStatus" aria-label="Filter logs by status"><option value="">All statuses</option><option>scheduled</option><option>verified</option><option>failed</option><option>blocked</option><option>skipped</option><option>waiting_confirmation</option><option>dry_run</option></select><button type="button" class="button button-secondary" id="refreshLogs">Refresh log</button></div>
+        <div id="logs"></div>
+        <div class="pagination" id="logPagination"><span class="pagination-label" id="logPageLabel">Page 1 of 1 · 0 entries</span><div class="actions"><button type="button" class="button button-secondary" id="prevLogs" disabled>Previous</button><button type="button" class="button button-secondary" id="nextLogs" disabled>Next</button></div></div>
+      </section>
+
+      <section class="card wide">
+        <div class="section-head"><div><h2>Upcoming 5 workdays</h2><p class="section-description">Randomized punch times prepared from your weekly windows. Holiday dates are skipped automatically.</p></div><div class="section-actions"><span class="section-kicker">Asia/Kathmandu</span><button type="button" class="button button-secondary" id="editSchedule">Edit weekly schedule</button></div></div>
+        <div class="forecast-list" id="forecast"></div>
+        <div class="editor-panel" id="scheduleEditor" hidden>
+          <div class="section-head"><div><h3>Weekly windows</h3><p class="helper">Edit the allowed punch-in and punch-out windows, minimum duration, and maximum duration.</p></div><div class="section-actions"><button type="submit" form="scheduleForm" class="button button-primary" id="saveSchedule" hidden disabled>Save changes</button><button type="button" class="button button-secondary" id="closeSchedule">Close editor</button></div></div>
+          <form id="scheduleForm">
+            <div class="table-wrap"><table><thead><tr><th>Day</th><th>Shift</th><th>Punch-in window</th><th>Punch-out window</th><th>Minimum</th><th>Maximum</th><th>Active</th></tr></thead><tbody id="scheduleRows"></tbody></table></div>
+            <div class="actions" style="margin-top:16px"><button type="button" class="button button-secondary" id="preview" title="Check whether the current Nepal time falls inside today's punch-in or punch-out window. This does not open RigoHR or submit attendance.">Check eligibility</button><span class="helper">Checks today’s punch windows and records the reason; it does not open RigoHR.</span></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card" id="leavesHolidaysCard" hidden>
+        <div class="section-head exception-section-head"><div><h2>Leaves and holidays</h2><p class="section-description">Select future dates when the attendance routine should not run.</p></div><div class="section-actions"><button type="button" class="button button-secondary" id="addException">Add new</button></div></div>
+        <div class="form-stack editor-panel" id="exceptionEditor" hidden>
+          <div class="form-grid"><div><label class="field-label" for="exceptionType">Type</label><select id="exceptionType"><option value="leave">Planned leave</option><option value="holiday">Holiday</option></select></div><div><label class="field-label" for="exceptionNote">Note <span class="helper">(optional)</span></label><input id="exceptionNote" type="text" maxlength="200" placeholder="e.g. Dashain holiday"></div></div>
+          <div class="calendar-toolbar"><button type="button" class="button button-secondary" id="previousMonth">←</button><strong class="calendar-month" id="calendarMonth"></strong><button type="button" class="button button-secondary" id="nextMonth">→</button></div>
+          <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="Select leave or holiday dates"></div>
+          <div class="actions"><button type="button" class="button button-primary" id="saveExceptions" disabled>Save selected dates</button><span class="helper" id="exceptionSelectionHelp">Select one or more future dates.</span></div>
+        </div>
+        <div id="exceptions" class="exception-list"></div>
+      </section>
+
+      <section class="card" id="emailNotificationsCard" hidden>
+        <div class="section-head"><div><h2>Email notifications</h2><p class="section-description">Send verified, failed, and blocked action updates to selected recipients.</p></div><div class="section-actions"><button type="button" class="button button-secondary" id="testEmail" hidden disabled>Send test email</button><button type="submit" form="emailForm" class="button button-primary" id="saveRecipients" hidden disabled>Save changes</button></div></div>
+        <form id="emailForm" class="form-stack"><div><label class="field-label" for="recipientInput">Recipients</label><div class="recipient-editor" id="recipientEditor"><div id="recipientChips"></div><input id="recipientInput" type="email" placeholder="Add email and press Enter" autocomplete="email"></div><p class="helper" style="margin-top:7px">Press Enter or comma after each address. Leave empty to disable delivery. The app never uses your RigoHR username as a fallback.</p></div></form>
+      </section>
+
+      <section class="card" id="adminUsersCard" hidden>
+        <div class="section-head"><div><h2>Admin user management</h2><p class="section-description">Only administrators can create accounts. There is no public registration.</p></div></div>
+        <form id="adminUserForm" class="form-stack"><div class="form-grid"><div><label class="field-label" for="newUserEmail">User email</label><input id="newUserEmail" type="email" required></div><div><label class="field-label" for="newUserPassword">Temporary password</label><input id="newUserPassword" type="password" minlength="8" required></div></div><div class="form-grid"><div><label class="field-label" for="newUserRole">Role</label><select id="newUserRole"><option value="user">User</option><option value="admin">Administrator</option></select></div><div class="actions" style="align-items:end"><button class="button button-primary" type="submit">Create user</button></div></div></form>
+        <div id="adminUsers" class="admin-users" style="margin-top:16px"></div>
+      </section>
+
+      <section class="card" id="dateOverrideCard" hidden>
+        <div class="section-head"><div><h2>Date override</h2><p class="section-description">Apply a one-off shift without changing your weekly pattern.</p></div></div>
+        <form id="overrideForm" class="form-stack">
+          <div class="form-grid"><div><label class="field-label" for="overrideDate">Date</label><input id="overrideDate" type="date" name="date" required></div><div><label class="field-label" for="overrideShift">Shift</label><select id="overrideShift" name="shift"><option>Morning</option><option>Evening</option></select></div></div>
+          <div><span class="field-label">Punch-in window</span><div class="window"><input aria-label="Override punch-in start" name="inStart" type="time" required><span class="window-separator">–</span><input aria-label="Override punch-in end" name="inEnd" type="time" required></div></div>
+          <div><span class="field-label">Punch-out window</span><div class="window"><input aria-label="Override punch-out start" name="outStart" type="time" required><span class="window-separator">–</span><input aria-label="Override punch-out end" name="outEnd" type="time" required></div></div>
+          <div class="form-grid"><div><label class="field-label" for="overrideMin">Minimum hours</label><input id="overrideMin" name="min" type="number" min="9" max="24" step=".5" value="9" required></div><div><label class="field-label" for="overrideMax">Maximum hours</label><input id="overrideMax" name="max" type="number" min="9" max="24" step=".5" value="10" required></div></div>
+          <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px"><input type="checkbox" name="enabled" checked> Apply this override</label>
+          <div class="actions"><button class="button button-primary">Save override</button></div>
+        </form>
+        <div id="overrides" class="override-list"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <section class="history-view" id="historyView" hidden aria-labelledby="historyTitle">
+    <div class="history-shell">
+      <div class="history-topbar">
+        <div><div class="history-kicker">Attendance archive</div><h1 class="history-title" id="historyTitle">Punch history</h1><p class="history-subtitle">A visual record of every attendance day, exception, verification, and proof image saved by RigoHR Attendance.</p></div>
+        <button type="button" class="history-close" id="closeHistory" aria-label="Close history">×</button>
+      </div>
+      <div class="history-layout">
+        <section class="history-card" aria-label="Attendance history calendar">
+          <div class="history-calendar-head"><h2 class="history-month" id="historyMonth"></h2><div class="history-nav"><button type="button" class="button button-secondary" id="historyPrevious">←</button><button type="button" class="button button-secondary" id="historyNext">→</button></div></div>
+          <div class="history-grid" id="historyCalendar" role="grid" aria-label="Attendance history"></div>
+          <div class="history-legend"><span class="history-legend-item"><span class="history-date-dot success"></span>Punch-out success</span><span class="history-legend-item"><span class="history-date-dot error"></span>Error</span><span class="history-legend-item"><span class="history-date-dot cancelled"></span>Leave / holiday / cancelled</span></div>
+        </section>
+        <aside class="history-card" id="historyDetail" aria-live="polite"></aside>
+      </div>
+    </div>
+  </section>
+
+  <dialog id="skipDialog" aria-labelledby="skipDialogTitle">
+    <div class="dialog-body">
+      <h2 id="skipDialogTitle">Skip today’s attendance?</h2>
+      <p id="skipDialogText">This will skip today’s punch-in and punch-out and cancel any scheduled automatic actions. Any punches already recorded will remain unchanged.</p>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" id="cancelSkip">Cancel</button><button type="button" class="button button-danger" id="confirmSkip">Skip today</button></div>
+    </div>
+  </dialog>
+
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    let config;
+    let currentUser;
+    let recipients = [];
+    let verifiedRecipients = new Set();
+    let recipientBaseline = '';
+    let scheduleBaseline = '';
+    let forecast = [];
+    let exceptions = [];
+    let calendarMonth = new Date();
+    let selectedExceptionDates = new Set();
+    let activityInitialized = false;
+    const activityIds = new Set();
+    let historyData = { logs: [], attendance: [], exceptions: [] };
+    let historyMonth = new Date();
+    let historySelectedDate = '';
+    let logPage = 1;
+    const logPageSize = 5;
+    const pageRoutes = { '/settings/email': { sectionId: 'emailNotificationsCard', eyebrow: 'Settings', title: 'Email notifications', description: 'Manage verified, failed, and blocked attendance updates sent to your selected recipients.' }, '/settings/date-override': { sectionId: 'dateOverrideCard', eyebrow: 'Schedule settings', title: 'Date override', description: 'Apply a one-off shift without changing your weekly schedule.' }, '/settings/admin-users': { sectionId: 'adminUsersCard', eyebrow: 'Administration', title: 'Admin user management', description: 'Create and review application accounts. Only administrators can access this page.', adminOnly: true } };
+    function msg(text, kind = 'notice') { $('#message').innerHTML = text ? '<div class="notice '+kind+'">'+escapeHtml(text)+'</div>' : ''; }
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[character])); }
+    let toastTimer;
+    function toast(text, kind = 'info') { clearTimeout(toastTimer); const region=$('#toastRegion'); region.innerHTML=text?`<div class="toast ${kind}" role="status">${escapeHtml(text)}</div>`:''; if(text) toastTimer=setTimeout(()=>{region.innerHTML='';},5000); }
+    function hours(minutes) { return (minutes / 60).toFixed(1); }
+    function titleCase(value) { return value[0].toUpperCase()+value.slice(1); }
+    function actionLabel(action) { return action === 'check-in' ? 'Punch-in' : 'Punch-out'; }
+    function isValidEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()); }
+    function syncRecipientSaveState() { const save=$('#saveRecipients'); const test=$('#testEmail'); if (save || test) { const pending=$('#recipientInput')?.value.trim(); const clean=JSON.stringify(recipients) === recipientBaseline && !pending; const canTest=recipients.length>0 || isValidEmail(pending||''); if (save) { save.disabled=clean; save.hidden=clean; } if (test) { test.disabled=!canTest; test.hidden=clean; } } }
+    function renderRecipients() { $('#recipientChips').innerHTML = recipients.map((email, index) => `<span class="recipient-chip">${verifiedRecipients.has(email)?'<span class="recipient-verified" title="Test email sent successfully" aria-label="Verified">✓</span>':''}<span>${escapeHtml(email)}</span><button type="button" class="recipient-remove" data-recipient-index="${index}" aria-label="Remove ${escapeHtml(email)}">×</button></span>`).join(''); document.querySelectorAll('[data-recipient-index]').forEach(button => button.onclick = () => { verifiedRecipients.clear(); recipients.splice(Number(button.dataset.recipientIndex), 1); renderRecipients(); }); syncRecipientSaveState(); }
+    function addRecipient(value) { const email = value.trim().replace(/,$/, '').trim(); if (!email) return true; if (!isValidEmail(email)) { msg('Enter a valid email address before adding it.', 'error'); return false; } verifiedRecipients.clear(); if (!recipients.includes(email)) recipients.push(email); $('#recipientInput').value = ''; renderRecipients(); return true; }
+    function readRule(row, base) { return {...base, shift:row.querySelector('[name=shift]').value, checkInWindow:{start:row.querySelector('[name=inStart]').value,end:row.querySelector('[name=inEnd]').value}, checkOutWindow:{start:row.querySelector('[name=outStart]').value,end:row.querySelector('[name=outEnd]').value}, minDurationMinutes:Math.round(Number(row.querySelector('[name=min]').value)*60), maxDurationMinutes:Math.round(Number(row.querySelector('[name=max]').value)*60), enabled:row.querySelector('[name=enabled]').checked}; }
+    function currentSchedule() { const rows=[...document.querySelectorAll('#scheduleRows tr')]; return config.weekly.map((rule,index)=>readRule(rows[index],rule)); }
+    function syncScheduleSaveState() { const button=$('#saveSchedule'); if (button) { const clean=JSON.stringify(currentSchedule()) === scheduleBaseline; button.disabled=clean; button.hidden=clean; } }
+    function renderSchedule() { $('#scheduleRows').innerHTML = config.weekly.map((rule, index) => `<tr data-index="${index}"><td><div class="day-cell"><span class="day-index">${String(index + 1).padStart(2,'0')}</span>${titleCase(rule.day)}</div></td><td><select class="shift-select" name="shift"><option ${rule.shift==='Morning'?'selected':''}>Morning</option><option ${rule.shift==='Evening'?'selected':''}>Evening</option></select></td><td><div class="window"><input aria-label="${rule.day} punch-in start" name="inStart" type="time" value="${rule.checkInWindow.start}"><span class="window-separator">–</span><input aria-label="${rule.day} punch-in end" name="inEnd" type="time" value="${rule.checkInWindow.end}"></div></td><td><div class="window"><input aria-label="${rule.day} punch-out start" name="outStart" type="time" value="${rule.checkOutWindow.start}"><span class="window-separator">–</span><input aria-label="${rule.day} punch-out end" name="outEnd" type="time" value="${rule.checkOutWindow.end}"></div></td><td><input class="duration-input" aria-label="${rule.day} minimum hours" name="min" type="number" min="9" step=".5" value="${hours(rule.minDurationMinutes)}"></td><td><input class="duration-input" aria-label="${rule.day} maximum hours" name="max" type="number" min="9" step=".5" value="${hours(rule.maxDurationMinutes)}"></td><td><input aria-label="${rule.day} enabled" name="enabled" type="checkbox" ${rule.enabled?'checked':''}></td></tr>`).join(''); scheduleBaseline=JSON.stringify(config.weekly); document.querySelectorAll('#scheduleRows input, #scheduleRows select').forEach(input => { input.addEventListener('input', syncScheduleSaveState); input.addEventListener('change', syncScheduleSaveState); }); syncScheduleSaveState(); }
+    function renderForecast() { $('#forecast').innerHTML=forecast.map((day,index)=>{const dateLabel=new Date(`${day.date}T12:00:00Z`).toLocaleDateString('en-NP',{weekday:'short',month:'short',day:'numeric'});const statusLabel=day.status==='scheduled'?'Scheduled':titleCase(day.status);const actionOptions=day.status==='holiday'?'<option value="">Holiday</option><option value="clear">Clear holiday</option>':'<option value="">Actions</option><option value="holiday">Mark holiday</option>';const rowStatus=day.status==='scheduled'?'':` forecast-${String(day.status).replace(/[^a-z-]/g,'')}`;return `<div class="forecast-row${rowStatus}"><div class="forecast-day"><span class="day-index">${String(index+1).padStart(2,'0')}</span><div><div>${titleCase(day.day)}</div><div class="forecast-date">${escapeHtml(dateLabel)}</div></div></div>${day.status==='scheduled'?`<div class="forecast-time"><span class="forecast-time-label">Punch-in</span><strong class="forecast-time-value">${escapeHtml(day.checkIn)}</strong><span class="forecast-window">Window ${escapeHtml(day.checkInWindow.start)}–${escapeHtml(day.checkInWindow.end)}</span></div><div class="forecast-time"><span class="forecast-time-label">Punch-out</span><strong class="forecast-time-value">${escapeHtml(day.checkOut)}</strong><span class="forecast-window">Window ${escapeHtml(day.checkOutWindow.start)}–${escapeHtml(day.checkOutWindow.end)}</span></div>`:`<div class="forecast-status ${escapeHtml(day.status)}">${escapeHtml(statusLabel)}<div class="forecast-window">No automatic punch</div></div><div></div>`}<div class="forecast-action"><select aria-label="Actions for ${escapeHtml(day.date)}" data-forecast-action="${escapeHtml(day.date)}">${actionOptions}</select></div></div>`;}).join('')||'<p class="helper" style="padding:16px">No upcoming workdays found.</p>';document.querySelectorAll('[data-forecast-action]').forEach(select=>select.onchange=async()=>{const action=select.value;select.value='';if(!action)return;try{if(action==='holiday'){await api('/api/exceptions',{method:'POST',body:JSON.stringify({type:'holiday',dates:[select.dataset.forecastAction],note:'Marked from weekly forecast.'})});msg('Holiday saved for '+select.dataset.forecastAction+'.');}else if(action==='clear'){const existing=exceptions.find(exception=>exception.date===select.dataset.forecastAction);if(existing)await api('/api/exceptions/'+existing.id,{method:'DELETE'});msg('Holiday removed for '+select.dataset.forecastAction+'.');}await loadForecast();await loadExceptions();await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');}}); }
+    async function loadForecast() { forecast=await api('/api/forecast'); renderForecast(); }
+    async function loadAdminUsers() { const card=$('#adminUsersCard'); const link=$('#adminUsersLink'); if (currentUser?.role !== 'admin') { card.hidden=true; link.hidden=true; return; } card.hidden=false; link.hidden=false; const users=await api('/api/admin/users'); $('#adminUsers').innerHTML=users.map(user=>`<div class="admin-user-row"><span>${escapeHtml(user.email)}</span><span class="role-pill">${escapeHtml(user.role)}</span></div>`).join(''); }
+    function localToday() { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kathmandu',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+    function dateKey(year, month, day) { return `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
+    function renderExceptions() { const sorted=[...exceptions].sort((a,b)=>a.date.localeCompare(b.date)); $('#exceptions').innerHTML=sorted.length?'<div class="field-label" style="margin-bottom:4px">Saved dates</div>'+sorted.map(exception=>`<div class="exception-row"><div><span class="exception-type ${escapeHtml(exception.type)}">${escapeHtml(exception.type)}</span><strong>${escapeHtml(exception.date)}</strong>${exception.note?`<div class="override-detail">${escapeHtml(exception.note)}</div>`:''}</div><button type="button" class="button button-danger" data-exception-delete="${escapeHtml(exception.id)}" style="min-height:30px;padding:6px 9px">Remove</button></div>`).join(''):'<p class="helper">No planned leaves or holidays saved.</p>'; document.querySelectorAll('[data-exception-delete]').forEach(button=>button.onclick=async()=>{try{await api('/api/exceptions/'+button.dataset.exceptionDelete,{method:'DELETE'});msg('Schedule exception removed.');await loadExceptions();await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');}}); }
+    function renderCalendar() { const year=calendarMonth.getFullYear(); const month=calendarMonth.getMonth(); $('#calendarMonth').textContent=calendarMonth.toLocaleDateString('en-NP',{month:'long',year:'numeric'}); const firstDay=(new Date(Date.UTC(year,month,1)).getUTCDay()+6)%7; const existingByDate=Object.fromEntries(exceptions.map(exception=>[exception.date,exception])); const cells=[]; ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach((day,index)=>cells.push(`<div class="calendar-weekday ${index>=5?'weekend':''}" role="columnheader">${day}</div>`)); for(let index=0;index<42;index++){const cellDate=new Date(Date.UTC(year,month,index-firstDay+1));const date=cellDate.toISOString().slice(0,10);const day=cellDate.getUTCDate();const weekday=cellDate.getUTCDay();const weekend=weekday===0||weekday===6;const currentMonth=cellDate.getUTCMonth()===month;const existing=existingByDate[date];const past=date<localToday();const selected=selectedExceptionDates.has(date);const classes=['calendar-day',currentMonth?'':'outside',past?'past':'',weekend?'weekend':'',selected?'selected':'',existing?`existing-${existing.type}`:''].filter(Boolean).join(' ');const disabled=!currentMonth||past||Boolean(existing);cells.push(`<button type="button" class="${classes}" data-calendar-date="${date}" aria-label="${date}${existing?' '+existing.type:''}" ${disabled?'disabled':''}>${day}</button>`);} $('#calendarGrid').innerHTML=cells.join(''); document.querySelectorAll('[data-calendar-date]').forEach(button=>button.onclick=()=>{const date=button.dataset.calendarDate;if(selectedExceptionDates.has(date))selectedExceptionDates.delete(date);else selectedExceptionDates.add(date);renderCalendar();syncExceptionSaveState();}); syncExceptionSaveState(); }
+    function syncExceptionSaveState() { const count=selectedExceptionDates.size; $('#saveExceptions').disabled=!count; $('#exceptionSelectionHelp').textContent=count?`${count} date${count===1?'':'s'} selected.`:'Select one or more future dates.'; }
+    async function loadExceptions() { exceptions=await api('/api/exceptions'); const todayException=exceptions.find(exception=>exception.date===localToday()); const skipButton=$('#skipTodayBtn'); const canUnskip=todayException?.type==='skip'; const label=canUnskip?'Unskip today':todayException?titleCase(todayException.type)+' today':'Skip today'; skipButton.disabled=Boolean(todayException&&!canUnskip); skipButton.innerHTML=`<span class="button-icon" aria-hidden="true">${canUnskip?'↶':'⏭'}</span><span>${escapeHtml(label)}</span>`; skipButton.title=todayException&&!canUnskip?'Remove this leave or holiday from the calendar below.':''; renderExceptions(); renderCalendar(); }
+    async function api(url, options) { const response = await fetch(url, {headers:{'Content-Type':'application/json'}, ...options}); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data; }
+    function renderLiveAttendance(result) { const record=result.record||{}; $('#livePunchIn').textContent=record.checkIn||'No punch-in recorded'; $('#livePunchOut').textContent=record.checkOut||'No punch-out recorded'; const checkedAt=new Date(result.checkedAt); const time=Number.isNaN(checkedAt.getTime())?'now':checkedAt.toLocaleTimeString('en-NP',{timeZone:'Asia/Kathmandu',hour:'2-digit',minute:'2-digit',hour12:false}); const storedAt=result.storedAt?new Date(result.storedAt).toLocaleTimeString('en-NP',{timeZone:'Asia/Kathmandu',hour:'2-digit',minute:'2-digit',hour12:false}):time; $('#liveAttendanceMeta').textContent=`Checked ${time} Nepal Time · Saved in local SQLite at ${storedAt} · ${result.pageState}`; }
+    $('#checkLiveAttendance').onclick=async()=>{ const button=$('#checkLiveAttendance'); button.disabled=true; button.textContent='Checking…'; $('#liveAttendanceMeta').textContent='Opening the allowed RigoHR home flow, reading today’s attendance row, and saving it to SQLite…'; try { const result=await api('/api/attendance/check-live',{method:'POST'}); renderLiveAttendance(result); const record=result.record||{}; const summary=[record.checkIn?`punch-in ${record.checkIn}`:'no punch-in',record.checkOut?`punch-out ${record.checkOut}`:'no punch-out'].join(' · '); toast('RigoHR attendance checked and saved.','success'); msg(`RigoHR verified and saved: ${summary}.`); await refreshLogs(); } catch(error) { $('#liveAttendanceMeta').textContent='The live attendance check failed. See the activity log for details.'; toast(error.message,'error'); msg(error.message,'error'); } finally { button.disabled=false; button.textContent='Check attendance'; }};
+    async function load() { const session=await api('/api/auth/session'); currentUser=session.user; $('#userStatus').textContent=session.user.email; config=await api('/api/config'); recipients=[...(config.notificationEmails || [])]; verifiedRecipients.clear(); recipientBaseline=JSON.stringify(recipients); $('#recipientInput').value=''; renderRecipients(); renderSchedule(); renderOverrides(); await loadForecast(); await loadExceptions(); await loadAdminUsers(); await refreshStatus(); await refreshLogs(); renderPageRoute(); }
+    function renderOverrides() { $('#overrides').innerHTML = config.overrides.length ? '<div class="field-label" style="margin-bottom:4px">Saved overrides</div>'+config.overrides.map(override => `<div class="override-row"><div><strong>${escapeHtml(override.date)}</strong><div class="override-detail">${escapeHtml(override.shift)} · ${escapeHtml(override.checkInWindow.start)}–${escapeHtml(override.checkInWindow.end)} in · ${escapeHtml(override.checkOutWindow.start)}–${escapeHtml(override.checkOutWindow.end)} out</div></div><button class="button button-danger" data-delete="${escapeHtml(override.date)}" style="min-height:30px;padding:6px 9px">Remove</button></div>`).join('') : '<p class="helper">No date-specific overrides saved.</p>'; document.querySelectorAll('[data-delete]').forEach(button => button.onclick=async()=>{try{await api('/api/overrides/'+button.dataset.delete,{method:'DELETE'});msg('Date override removed.');await load();}catch(error){msg(error.message,'error');}}); }
+    function renderActions(actions) { const pending=actions.filter(action=>action.state==='scheduled'); const card=$('#automaticActionsCard'); if(card)card.hidden=!pending.length; $('#actions').className=pending.length?'':'approval-empty'; $('#actions').innerHTML=pending.length?pending.map(action=>`<div class="approval-card"><div class="approval-head"><span class="action-icon">${action.action==='check-in'?'↙':'↗'}</span><div class="approval-copy"><p class="eyebrow" style="margin-bottom:4px">Automatic ${actionLabel(action.action)}</p><h3>${actionLabel(action.action)} will run at ${escapeHtml(action.targetWindow.start)}</h3><p>${escapeHtml(action.date)} · ${escapeHtml(action.scheduleSource)}</p></div><span class="status-pill">Scheduled</span></div><div class="approval-meta"><span class="meta-chip">Executes at ${escapeHtml(action.targetWindow.start)} Nepal Time</span><span class="meta-chip">Minimum duration ${hours(action.minDurationMinutes)}h</span><span class="meta-chip">Cancellation available until execution</span></div><button class="button button-danger" data-cancel="${escapeHtml(action.id)}">Cancel automatic ${actionLabel(action.action).toLowerCase()}</button></div>`).join(''):'<div>No automatic actions are currently scheduled.</div><p class="helper" style="margin-top:7px">This alert appears during the 15-minute preparation window and disappears after execution or cancellation.</p>'; document.querySelectorAll('[data-cancel]').forEach(button=>button.onclick=async()=>{if(!confirm('Cancel this automatic '+button.textContent.replace('Cancel automatic ','')+' action?'))return;button.disabled=true;try{await api('/api/actions/'+button.dataset.cancel+'/cancel',{method:'POST'});msg('Automatic action cancelled.');await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');button.disabled=false;await refreshLogs();}}); }
+    function timeMinutes(value) { const parts=value.split(':').map(Number); return parts[0]*60+parts[1]; }
+    function durationLabel(start, end) { let difference=timeMinutes(end)-timeMinutes(start); if(difference<0)difference+=24*60; return Math.floor(difference/60)+'h '+String(difference%60).padStart(2,'0')+'m'; }
+    function renderSchedulerStatus(status) { const state=status?.state||'inactive'; const label=state==='active'?'Scheduler active':state==='starting'?'Scheduler starting':state==='error'?'Scheduler error':'Scheduler inactive'; const dot=$('#schedulerDot'); dot.className='live-dot '+(state==='active'?'':state==='starting'?'warning':state); $('#schedulerStatus').setAttribute('aria-label',label); $('#schedulerStatus').title=label; $('#schedulerStatusText').textContent=label; }
+    async function refreshStatus() { const status=await api('/api/status'); renderSchedulerStatus(status.scheduler); $('#now').textContent=new Date(status.now).toLocaleTimeString('en-NP',{timeZone:'Asia/Kathmandu',hour:'2-digit',minute:'2-digit',hour12:false}); $('#schedule').textContent=status.schedule==='none'?'No active rule':titleCase(status.schedule.replace('weekly ','').replace('date override ','')); const emailList=config?.notificationEmails || []; $('#emailStatus').textContent=emailList.length ? emailList.join(', ') : 'No emails configured'; const next=status.nextAction; const guidance=status.checkoutGuidance; if(next){ $('#refreshScheduleBtn').style.display = 'block'; $('#refreshScheduleBtn').onclick = async () => { try { await api('/api/refresh-schedule/' + next.date, { method: 'POST' }); msg('Schedule randomized.'); await refreshStatus(); } catch(error) { msg(error.message, 'error'); } }; const isCheckIn=next.action==='check-in'; $('#nextActionLabel').textContent=actionLabel(next.action); $('#nextAction').textContent=next.availableNow?'Now':next.windowStart; const configuredIn=next.checkInWindow||{start:next.windowStart,end:next.windowEnd}; const configuredOut=next.checkOutWindow||next.punchOutWindow; $('#nextActionWindow').textContent='Window '+configuredIn.start+'–'+configuredIn.end; $('#nextPunchOutTime').textContent=next.punchOutWindow.start; $('#nextPunchOutWindow').textContent='Window '+configuredOut.start+'–'+configuredOut.end; $('#nextDelta').textContent='Planned span: '+durationLabel(next.windowStart,next.punchOutWindow.start); $('#nextActionNote').textContent=(next.date===status.local.date?'Today':next.date)+' · '+(isCheckIn?'Punch-in opens first':'Punch-out window'); } else { $('#refreshScheduleBtn').style.display = 'none'; $('#nextActionLabel').textContent='Next action'; $('#nextAction').textContent='None'; $('#nextActionWindow').textContent='No scheduled window'; $('#nextPunchOutTime').textContent='—'; $('#nextPunchOutWindow').textContent='No scheduled window'; $('#nextDelta').textContent=''; $('#nextActionNote').textContent='No enabled rules in 14 days'; } if(guidance){ $('#nextDelta').textContent='Planned span: '+(next?durationLabel(next.windowStart,next.punchOutWindow.start):'—')+' · Earliest after 9h: '+guidance.earliestCheckout; $('#earliestCheckout').textContent=guidance.blockedReason||''; } else { $('#earliestCheckout').textContent=''; } renderActions(status.actions); }
+    function renderExceptionStatus(exception) { $('#now').textContent=new Date().toLocaleTimeString('en-NP',{timeZone:'Asia/Kathmandu',hour:'2-digit',minute:'2-digit',hour12:false}); const emailList=config?.notificationEmails || []; $('#emailStatus').textContent=emailList.length ? emailList.join(', ') : 'No emails configured'; $('#schedule').textContent=exception.type==='skip'?'Skipped today':titleCase(exception.type)+' today'; $('#nextActionLabel').textContent='Attendance skipped'; $('#nextAction').textContent='Skipped'; $('#nextActionWindow').textContent='No punch-in today'; $('#nextPunchOutTime').textContent='Skipped'; $('#nextPunchOutWindow').textContent='No punch-out today'; $('#nextDelta').textContent='No attendance actions will run'; $('#nextActionNote').textContent='Today · '+titleCase(exception.type); $('#earliestCheckout').textContent=''; $('#refreshScheduleBtn').style.display='none'; }
+    const refreshStatusWithException = refreshStatus;
+    refreshStatus = async function() { const todayException=exceptions.find(exception=>exception.date===localToday()); if(todayException){ const status=await api('/api/status'); renderSchedulerStatus(status.scheduler); renderExceptionStatus(todayException); return; } await refreshStatusWithException(); };
+    function statusClass(status) { return String(status).replace(/[^a-z_]/g,''); }
+    function logActionDescription(log) { const action=log.action?actionLabel(log.action):''; if(log.errorCategory==='live_attendance_check') return log.status==='failed'?'Live attendance check failed':'Live attendance check · read today’s RigoHR record'; if(log.verificationResult==='duplicate-punch-in-detected') return 'Punch-in · duplicate detected, not submitted'; if(log.status==='dry_run') return 'Eligibility evaluation · no RigoHR action'; if(action) { const verb={scheduled:'scheduled',waiting_confirmation:'awaiting approval',clicked:'submitted',verified:'verified',failed:'failed',blocked:'blocked',skipped:'skipped'}[log.status]||log.status.replaceAll('_',' '); return `${action} · ${verb}`; } if(log.errorCategory==='user_cancelled') return 'Automatic attendance action cancelled'; if(log.errorCategory) return `${titleCase(log.errorCategory.replaceAll('_',' '))} · system event`; return 'Attendance system event'; }
+    function attendanceSummary(log) { const punchIn=log.observedCheckIn?'Punch-in: '+escapeHtml(log.observedCheckIn):'Punch-in: —'; const punchOut=log.observedCheckOut?'Punch-out: '+escapeHtml(log.observedCheckOut):'Punch-out: —'; return punchIn+' · '+punchOut; }
+    function logPunchSummary(log) { return [log.observedCheckIn?'Punch-in '+log.observedCheckIn:'', log.observedCheckOut?'Punch-out '+log.observedCheckOut:''].filter(Boolean).join(' · '); }
+    function historyInfo(date) { const logs=historyData.logs.filter(log=>log.date===date); const exception=historyData.exceptions.find(item=>item.date===date); const punchOutSuccess=logs.some(log=>log.status==='verified'&&log.action==='check-out'); const error=logs.some(log=>['failed','blocked'].includes(log.status)); const cancelled=Boolean(exception)||logs.some(log=>log.errorCategory==='user_cancelled'||log.status==='skipped'); const status=exception||cancelled?'cancelled':error?'error':punchOutSuccess?'success':logs.length?'info':''; const tag=exception?titleCase(exception.type):logs.find(log=>log.errorCategory==='user_cancelled')?'User cancelled':error?'Error':punchOutSuccess?'Punch-out success':logs.length?'Activity':''; return {logs,exception,status,tag}; }
+    function historyDateKey(year,month,day) { return `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
+    function renderHistoryCalendar() { const year=historyMonth.getFullYear(); const month=historyMonth.getMonth(); $('#historyMonth').textContent=historyMonth.toLocaleDateString('en-NP',{month:'long',year:'numeric'}); const firstDay=(new Date(Date.UTC(year,month,1)).getUTCDay()+6)%7; const cells=[]; ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach((day,index)=>cells.push(`<div class="history-weekday ${index>=5?'weekend':''}" role="columnheader">${day}</div>`)); for(let index=0;index<42;index++){const dateValue=new Date(Date.UTC(year,month,index-firstDay+1));const date=dateValue.toISOString().slice(0,10);const currentMonth=dateValue.getUTCMonth()===month;const info=historyInfo(date);const selected=date===historySelectedDate;cells.push(`<button type="button" class="history-date ${currentMonth?'':'outside'} ${selected?'selected':''}" data-history-date="${date}" aria-label="${date}${info.tag?' '+info.tag:''}"><span class="history-date-number">${dateValue.getUTCDate()}</span>${info.status?`<span class="history-date-dot ${info.status}"></span><span class="history-date-tag">${escapeHtml(info.tag)}</span>`:''}</button>`);} $('#historyCalendar').innerHTML=cells.join(''); document.querySelectorAll('[data-history-date]').forEach(button=>button.onclick=()=>{historySelectedDate=button.dataset.historyDate;renderHistoryCalendar();renderHistoryDetail();}); }
+    function renderHistoryDetail() { const detail=$('#historyDetail'); if(!historySelectedDate){detail.innerHTML='<div class="history-detail-empty">Select a date to inspect its attendance events and proof screenshots.</div>';return;} const info=historyInfo(historySelectedDate); const record=historyData.attendance.find(item=>item.date===historySelectedDate); const screenshots=[]; info.logs.forEach(log=>{if(log.status==='verified'&&log.screenshots?.length)log.screenshots.forEach(s=>screenshots.push({label:log.action?`${actionLabel(log.action)} · ${s.label}`:s.label,path:s.path}));}); const uniqueScreenshots=screenshots.filter((item,index,array)=>array.findIndex(candidate=>candidate.path===item.path)===index); const statusLabel=info.tag||'No recorded activity'; detail.innerHTML=`<div class="history-detail-head"><div><div class="history-kicker">Selected date</div><h2 class="history-detail-date">${escapeHtml(new Date(`${historySelectedDate}T12:00:00Z`).toLocaleDateString('en-NP',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</h2></div><span class="history-detail-status ${info.status||'info'}">${escapeHtml(statusLabel)}</span></div><div class="history-tags">${info.exception?`<span class="history-tag">${escapeHtml(titleCase(info.exception.type))}</span>`:''}${record?.checkIn?`<span class="history-tag">Punch-in ${escapeHtml(record.checkIn)}</span>`:''}${record?.checkOut?`<span class="history-tag">Punch-out ${escapeHtml(record.checkOut)}</span>`:''}${info.logs.some(log=>log.errorCategory==='user_cancelled')?'<span class="history-tag">User cancelled</span>':''}${info.logs.filter(log=>log.errorCategory&&log.errorCategory!=='user_cancelled').slice(0,3).map(log=>`<span class="history-tag">${escapeHtml(log.errorCategory.replaceAll('_',' '))}</span>`).join('')}</div>${uniqueScreenshots.length?`<div class="history-detail-section"><h3>Proof screenshots</h3><div class="history-proof-grid">${uniqueScreenshots.map(s=>`<figure class="history-proof"><a href="${escapeHtml(s.path)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(s.path)}" loading="lazy" alt="${escapeHtml(s.label)}"></a><figcaption>${escapeHtml(s.label)}</figcaption></figure>`).join('')}</div></div>`:'<div class="history-detail-section"><h3>Proof screenshots</h3><div class="history-detail-empty">No proof screenshots were recorded for this date.</div></div>'}<div class="history-detail-section"><h3>Activity on this date</h3><div class="history-events">${info.logs.length?info.logs.map(log=>`<article class="history-event"><div class="history-event-top"><span class="history-event-status">${escapeHtml(log.status.replaceAll('_',' '))}${log.action?` · ${escapeHtml(actionLabel(log.action))}`:''}</span><time>${escapeHtml(new Date(log.timestamp).toLocaleTimeString('en-NP',{hour:'2-digit',minute:'2-digit'}))}</time></div><div class="history-event-message">${escapeHtml(log.message)}</div></article>`).join(''):'<div class="history-detail-empty">No activity was recorded for this date.</div>'}</div></div>`; }
+    async function openHistory() { historyData=await api('/api/history'); historySelectedDate=localToday(); historyMonth=new Date(); const selected=new Date(`${historySelectedDate}T12:00:00Z`); if(!Number.isNaN(selected.getTime()))historyMonth=new Date(selected.getUTCFullYear(),selected.getUTCMonth(),1); renderHistoryCalendar();renderHistoryDetail();$('#historyView').hidden=false;document.body.style.overflow='hidden'; }
+    function closeHistory() { $('#historyView').hidden=true;document.body.style.overflow=''; }
+    function activityToastKind(status) { return status==='failed'?'error':(['blocked','skipped','waiting_confirmation'].includes(status)?'warning':(['scheduled','verified'].includes(status)?'success':'info')); }
+    function notifyActivityEvents(logs) { if(!logs.length)return; if(!activityInitialized){logs.forEach(log=>activityIds.add(log.id));activityInitialized=true;return;} const fresh=logs.filter(log=>!activityIds.has(log.id)); logs.forEach(log=>activityIds.add(log.id)); if(!fresh.length)return; const latest=fresh[0]; const suffix=fresh.length>1?` · ${fresh.length} new events`:''; toast(`Activity${suffix}: ${latest.message}`, activityToastKind(latest.status)); }
+    async function refreshLogs() { const params=new URLSearchParams({page:String(logPage),pageSize:String(logPageSize)});const hasFilters=Boolean($('#logDate').value||$('#logStatus').value);if($('#logDate').value)params.set('date',$('#logDate').value);if($('#logStatus').value)params.set('status',$('#logStatus').value);const result=await api('/api/logs?'+params);if(!hasFilters)notifyActivityEvents(result.logs);logPage=result.page;$('#logs').innerHTML=result.logs.length?result.logs.map(log=>`<details class="log"><summary><span class="log-status ${statusClass(log.status)}">${escapeHtml(log.status.replace('_',' '))}</span><span class="log-summary-text"><span class="log-action-label">${escapeHtml(logActionDescription(log))}</span><span class="log-message">${escapeHtml(log.message)}${logPunchSummary(log)?' · '+escapeHtml(logPunchSummary(log)):''}</span></span><span class="log-date">${escapeHtml(log.date)}</span></summary><div class="log-details"><div class="log-meta"><span class="log-detail-label">Action performed:</span> ${escapeHtml(logActionDescription(log))} · ${escapeHtml(new Date(log.timestamp).toLocaleString())}</div><div class="log-meta"><span class="log-detail-label">Attendance observed:</span> ${attendanceSummary(log)}</div><div class="log-meta"><span class="log-detail-label">System result:</span> ${escapeHtml(log.observedPageState||'Not provided')}${log.verificationResult?' · Verified: '+escapeHtml(log.verificationResult):''}${log.errorCategory?' · Error: '+escapeHtml(log.errorCategory):''}${log.emailNotification?' · Email: '+escapeHtml(log.emailNotification):''}</div>${log.screenshots?.length?'<div class="evidence-note">Screenshots captured for this event. Select an image to open it full size.</div><div class="screenshots">'+log.screenshots.map(s=>`<figure><a href="${escapeHtml(s.path)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(s.path)}" loading="lazy" alt="${escapeHtml(logActionDescription(log))} · ${escapeHtml(s.label)}"></a><figcaption>${escapeHtml(logActionDescription(log))} · ${escapeHtml(s.label)}</figcaption></figure>`).join('')+'</div>':''}${log.screenshotPath?'<div class="evidence-note">Failure screenshot</div><div class="screenshots"><figure><a href="'+escapeHtml(log.screenshotPath)+'" target="_blank" rel="noreferrer"><img src="'+escapeHtml(log.screenshotPath)+'" loading="lazy" alt="Failure screenshot"></a><figcaption>Failure screenshot</figcaption></figure></div>':''}${!log.screenshots?.length&&!log.screenshotPath?'<div class="evidence-note">No screenshot captured for this event'+(log.status==='dry_run'?' — dry runs evaluate the schedule without opening RigoHR.':'')+'</div>':''}</div></details>`).join(''):'<div class="approval-empty">No activity matches these filters.</div>';$('#logPageLabel').textContent=`Page ${result.page} of ${result.totalPages} · ${result.total} entries`;$('#prevLogs').disabled=result.page<=1;$('#nextLogs').disabled=result.page>=result.totalPages; }
+    $('#previousMonth').onclick=()=>{calendarMonth=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()-1,1);renderCalendar();}; $('#nextMonth').onclick=()=>{calendarMonth=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()+1,1);renderCalendar();}; $('#exceptionType').onchange=()=>{selectedExceptionDates.clear();renderCalendar();};
+    $('#saveExceptions').onclick=async()=>{const dates=[...selectedExceptionDates].sort();if(!dates.length)return;const button=$('#saveExceptions');button.disabled=true;try{await api('/api/exceptions',{method:'POST',body:JSON.stringify({type:$('#exceptionType').value,dates,note:$('#exceptionNote').value.trim()})});selectedExceptionDates.clear();$('#exceptionNote').value='';msg('Schedule exceptions saved.');await loadExceptions();await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');syncExceptionSaveState();}};
+    $('#addException').onclick=()=>{const editor=$('#exceptionEditor');const opening=editor.hidden;editor.hidden=!opening;$('#addException').textContent=opening?'Close':'Add new';if(opening)editor.scrollIntoView({behavior:'smooth',block:'start'});};
+    function openAccountDrawer() { const drawer=$('#accountDrawer'); drawer.inert=false; drawer.classList.add('open'); drawer.setAttribute('aria-hidden','false'); $('#openAccountDrawer').setAttribute('aria-expanded','true'); $('#drawerBackdrop').hidden=false; document.body.style.overflow='hidden'; $('#closeAccountDrawer').focus(); }
+    function closeAccountDrawer() { const drawer=$('#accountDrawer'); drawer.classList.remove('open'); drawer.setAttribute('aria-hidden','true'); drawer.inert=true; $('#openAccountDrawer').setAttribute('aria-expanded','false'); $('#drawerBackdrop').hidden=true; document.body.style.overflow=''; $('#openAccountDrawer').focus(); }
+    $('#openAccountDrawer').onclick=openAccountDrawer; $('#closeAccountDrawer').onclick=closeAccountDrawer; $('#drawerBackdrop').onclick=closeAccountDrawer;
+    function renderPageRoute() { let route=pageRoutes[window.location.pathname]; if(route?.adminOnly && currentUser?.role!=='admin'){ window.history.replaceState({},'', '/'); route=undefined; } const pageHeader=$('#pageHeader'); const layout=document.querySelector('.layout'); const stats=document.querySelector('.stats'); const movedSectionIds=Object.values(pageRoutes).map(page=>page.sectionId); if(!route){ pageHeader.hidden=true; stats.hidden=false; layout.classList.remove('page-layout'); document.querySelectorAll('.layout > section').forEach(section=>{if(movedSectionIds.includes(section.id))section.hidden=true;else if(section.id!=='automaticActionsCard')section.hidden=false;}); return; } pageHeader.hidden=false; $('#pageEyebrow').textContent=route.eyebrow; $('#pageTitle').textContent=route.title; $('#pageDescription').textContent=route.description; stats.hidden=true; layout.classList.add('page-layout'); document.querySelectorAll('.layout > section').forEach(section=>{section.hidden=section.id!==route.sectionId;}); window.scrollTo({top:0,behavior:'smooth'}); }
+    window.addEventListener('popstate',()=>{if($('#accountDrawer').classList.contains('open'))closeAccountDrawer();renderPageRoute();});
+    $('#seeHistory').onclick=()=>{openHistory().catch(error=>toast(error.message,'error'));}; $('#closeHistory').onclick=closeHistory; $('#historyPrevious').onclick=()=>{historyMonth=new Date(historyMonth.getFullYear(),historyMonth.getMonth()-1,1);renderHistoryCalendar();}; $('#historyNext').onclick=()=>{historyMonth=new Date(historyMonth.getFullYear(),historyMonth.getMonth()+1,1);renderHistoryCalendar();}; document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!$('#historyView').hidden)closeHistory();if($('#accountDrawer').classList.contains('open'))closeAccountDrawer();}});
+    $('#skipTodayBtn').onclick=()=>{if($('#skipTodayBtn').disabled)return;const todayException=exceptions.find(exception=>exception.date===localToday());const unskip=todayException?.type==='skip';$('#skipDialogTitle').textContent=unskip?'Unskip today’s attendance?':'Skip today’s attendance?';$('#skipDialogText').textContent=unskip?'This removes today’s skip and enables the attendance routine again. Any attendance already recorded would remain unchanged.':'This will skip today’s punch-in and punch-out and cancel any scheduled automatic actions. Any punches already recorded will remain unchanged.';$('#confirmSkip').textContent=unskip?'Unskip today':'Skip today';$('#confirmSkip').className=unskip?'button button-primary':'button button-danger';$('#skipDialog').showModal();}; $('#cancelSkip').onclick=()=>$('#skipDialog').close(); $('#confirmSkip').onclick=async()=>{const button=$('#confirmSkip');const todayException=exceptions.find(exception=>exception.date===localToday());const unskip=todayException?.type==='skip';button.disabled=true;try{$('#skipDialog').close();await api(unskip?'/api/exceptions/unskip-today':'/api/exceptions/skip-today',{method:'POST'});msg(unskip?'Today’s skip was removed.':'Today’s punch-in and punch-out were skipped.');await loadExceptions();await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');}finally{button.disabled=false;}};
+    function setScheduleEditor(opening) { const editor=$('#scheduleEditor'); editor.hidden=!opening; $('#editSchedule').textContent=opening?'Close editor':'Edit weekly schedule'; if(opening)editor.scrollIntoView({behavior:'smooth',block:'start'}); }
+    $('#editSchedule').onclick=()=>setScheduleEditor($('#scheduleEditor').hidden);
+    $('#closeSchedule').onclick=()=>setScheduleEditor(false);
+    $('#logout').onclick=async()=>{await fetch('/api/auth/logout',{method:'POST'});window.location.assign('/login');};
+    $('#adminUserForm').onsubmit=async event=>{event.preventDefault();try{const user=await api('/api/admin/users',{method:'POST',body:JSON.stringify({email:$('#newUserEmail').value,password:$('#newUserPassword').value,role:$('#newUserRole').value})});msg('User '+user.email+' created.');event.target.reset();await loadAdminUsers();}catch(error){msg(error.message,'error');}};
+    $('#scheduleForm').onsubmit=async event=>{event.preventDefault();try{config.weekly=currentSchedule();await api('/api/config',{method:'PUT',body:JSON.stringify(config)});msg('Weekly schedule saved.');await load();}catch(error){msg(error.message,'error');}};
+    $('#recipientInput').addEventListener('keydown', event=>{if(event.key==='Enter'||event.key===','){event.preventDefault();addRecipient(event.target.value);}});
+    $('#recipientInput').addEventListener('blur', event=>{if(event.target.value.trim())addRecipient(event.target.value);});
+    $('#recipientInput').addEventListener('input', ()=>{verifiedRecipients.clear();syncRecipientSaveState();});
+    $('#emailForm').onsubmit=async event=>{event.preventDefault();try{if($('#recipientInput').value.trim()&&!addRecipient($('#recipientInput').value))return;config.notificationEmails=[...recipients];await api('/api/config',{method:'PUT',body:JSON.stringify(config)});msg(recipients.length?'Notification recipients saved.':'Email notifications disabled.');await load();}catch(error){msg(error.message,'error');}};
+    $('#testEmail').onclick=async()=>{try{if($('#recipientInput').value.trim()&&!addRecipient($('#recipientInput').value))return;const result=await api('/api/email/test',{method:'POST',body:JSON.stringify({emails:recipients})});verifiedRecipients=new Set(result.recipients||recipients);renderRecipients();toast('Test email sent successfully.','success');msg('Test email sent successfully to '+(result.recipients||recipients).join(', ')+'.');}catch(error){toast(error.message,'error');msg(error.message,'error');}};
+    $('#overrideForm').onsubmit=async event=>{event.preventDefault();try{const form=new FormData(event.target);await api('/api/overrides',{method:'POST',body:JSON.stringify({date:form.get('date'),shift:form.get('shift'),enabled:form.get('enabled')==='on',checkInWindow:{start:form.get('inStart'),end:form.get('inEnd')},checkOutWindow:{start:form.get('outStart'),end:form.get('outEnd')},minDurationMinutes:Math.round(Number(form.get('min'))*60),maxDurationMinutes:Math.round(Number(form.get('max'))*60)})});msg('Date override saved.');event.target.reset();await load();}catch(error){msg(error.message,'error');}};
+    $('#preview').onclick=async()=>{try{const result=await api('/api/preview',{method:'POST'});const eligible=result.plans.length;const toastText=eligible?`${eligible} eligible action${eligible===1?'':'s'} now: ${result.plans.map(plan=>actionLabel(plan.action)).join(' and ')}.`:result.state==='no_schedule'?'Not eligible: there is no enabled schedule for today.':'Not eligible right now: the current time is outside the configured window or the action is already scheduled.';toast(toastText,eligible?'success':'warning');msg('Eligibility checked: '+result.state+'. See the activity log for the exact window decision.');await refreshStatus();await refreshLogs();}catch(error){toast(error.message,'error');msg(error.message,'error');}};
+    async function manual(action) { try{const result=await api('/api/manual/'+action,{method:'POST'});msg(result.state==='scheduled'?'Automatic '+action+' scheduled.':'No '+action+' action is eligible right now.');await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');} }
+    $('#refreshLogs').onclick=()=>{logPage=1;refreshLogs();}; $('#logDate').onchange=()=>{logPage=1;refreshLogs();}; $('#logStatus').onchange=()=>{logPage=1;refreshLogs();}; $('#prevLogs').onclick=()=>{if(logPage>1){logPage-=1;refreshLogs();}}; $('#nextLogs').onclick=()=>{logPage+=1;refreshLogs();}; setInterval(()=>{void refreshStatus();void refreshLogs();},10000); load().catch(error=>msg(error.message,'error'));
+  </script>
+</body>
+</html>
