@@ -11,7 +11,7 @@ Local, headed, scheduled assistant for the RigoHR employee dashboard. Requires N
 - Credentials are loaded from `.env`, never printed, and never committed.
 - Failure evidence is not captured while a login/password field is present.
 - Run logs can be expanded in the UI to view labeled pre-login, clock-gate, dashboard, and post-action screenshots when available.
-- Verified, failed, and safety-blocked punch-in/punch-out runs send an SMTP notification when SMTP is configured and a recipient is saved in the UI. The mailer never falls back to the RigoHR username or SMTP login address.
+- Verified, failed, and safety-blocked punch-in/punch-out runs send an SMTP notification when SMTP is configured and a recipient is saved in the UI. `NOTIFICATION_EMAILS` (or the single-recipient `NOTIFICATION_EMAIL`) can seed recipients into SQLite on first startup when the database has none. The mailer never falls back to the RigoHR username or SMTP login address.
 - Notification delivery failures are logged separately and never change a verified attendance result to failed.
 - SQLite stores the application configuration, weekly schedules, date overrides, recipients, scheduled actions, daily punch records, random seeds, and structured logs in `data/rigohr.sqlite`.
 - Screenshots use Cloudflare R2 when `R2_ENDPOINT`, `R2_BUCKET` (or `R2_BUCKET_NAME`), `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` are configured. They are stored under the virtual folder prefix in `R2_PREFIX` (default: `rigohr-attendance`). The database stores the evidence object keys; local development falls back to `data/evidence/` only when no R2 settings are present.

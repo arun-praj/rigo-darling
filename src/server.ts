@@ -3,7 +3,7 @@ import express from 'express';
 import path from 'node:path';
 import { evaluate, preview, manualRequest, hardPunchNow, executeAction, cancelAction, schedulerStatus, startScheduler } from './automation.js';
 import { DAYS } from './config.js';
-import { checkoutGuidance, getRandomPunchTimes, localParts, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validatePlannedPunchTimes, validateRule } from './schedule.js';
+import { checkoutGuidance, getRandomPunchTimes, isWithinLeadWindow, localParts, minutes, nextScheduledAction, ruleForDate, upcomingWorkdayForecast, validatePlannedPunchTimes, validateRule } from './schedule.js';
 import { makeId, store } from './store.js';
 import { evidenceStore } from './evidence.js';
 import { isValidEmail, sendTestEmail } from './mailer.js';
@@ -289,7 +289,10 @@ app.get('/api/status', (_req, res) => {
   const selected = ruleForDate(store.config, parts.date, parts.day);
   const dailyAttendance = store.getAttendance(parts.date);
   const checkout = dailyAttendance?.checkIn ? checkoutGuidance(store.config, parts.date, parts.day, now, dailyAttendance.checkIn) : undefined;
-  res.json({ now: now.toISOString(), local: parts, scheduler: schedulerStatus(now), schedule: exception ? `${exception.type} today` : selected?.source || 'none', exception, nextAction: nextScheduledAction(store.config, now, store.randomSeeds, new Set(store.exceptions.map((item) => item.date)), store.scheduleTimeOverrides), checkoutGuidance: checkout, attendance: dailyAttendance, actions: store.actions.slice(0, 20), logs: store.logs.slice(0, 20) });
+  const nextAction = nextScheduledAction(store.config, now, store.randomSeeds, new Set(store.exceptions.map((item) => item.date)), store.scheduleTimeOverrides);
+  const preparationActive = Boolean(nextAction && nextAction.date === parts.date && !nextAction.windowExpired && isWithinLeadWindow(parts.time, nextAction.windowStart, 15));
+  const scheduled = preparationActive && Boolean(store.actions.find((action) => action.date === nextAction?.date && action.action === nextAction?.action && action.state === 'scheduled'));
+  res.json({ now: now.toISOString(), local: parts, scheduler: schedulerStatus(now), schedule: exception ? `${exception.type} today` : selected?.source || 'none', exception, nextAction, preparationWindow: nextAction && nextAction.date === parts.date ? { active: preparationActive, action: nextAction.action, target: nextAction.windowStart, scheduled } : undefined, checkoutGuidance: checkout, attendance: dailyAttendance, actions: store.actions.slice(0, 20), logs: store.logs.slice(0, 20) });
 });
 
 app.post('/api/refresh-schedule/:date', (req, res) => {

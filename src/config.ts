@@ -12,11 +12,16 @@ const rule = (day: DayName, shift: 'Morning' | 'Evening'): ScheduleRule => ({
   maxDurationMinutes: 600,
 });
 
+export function notificationRecipientsFromEnv(): string[] {
+  const configured = process.env.NOTIFICATION_EMAILS || process.env.NOTIFICATION_EMAIL || '';
+  return [...new Set(configured.split(/[;,]/).map((email) => email.trim()).filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))];
+}
+
 export const defaultConfig = (): Config => ({
   timezone: process.env.RIGOHR_TIMEZONE || 'Asia/Kathmandu',
   weekly: DAYS.map((day) => rule(day, ['wednesday', 'thursday'].includes(day) ? 'Evening' : 'Morning')),
   overrides: [],
-  notificationEmails: [],
+  notificationEmails: notificationRecipientsFromEnv(),
 });
 
 export function withDefaultShift(config: Config): Config {

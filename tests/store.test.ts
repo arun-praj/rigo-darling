@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Store } from '../src/store.js';
 import type { PlannedAction } from '../src/types.js';
 
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of temporaryDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -42,6 +43,20 @@ describe('scheduled action claiming', () => {
     } finally {
       secondStore.close();
       firstStore.close();
+    }
+  });
+
+  it('seeds notification recipients from the environment when SQLite has none', () => {
+    vi.stubEnv('NOTIFICATION_EMAILS', 'alerts@example.com; backup@example.com');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rigohr-store-'));
+    temporaryDirectories.push(directory);
+    const databaseFile = path.join(directory, 'rigohr.sqlite');
+    const store = new Store(databaseFile, { dataDirectory: directory, seedAdmin: false });
+
+    try {
+      expect(store.config.notificationEmails).toEqual(['alerts@example.com', 'backup@example.com']);
+    } finally {
+      store.close();
     }
   });
 });

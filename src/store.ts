@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DAYS, defaultConfig } from './config.js';
+import { DAYS, defaultConfig, notificationRecipientsFromEnv } from './config.js';
 import { hashPassword } from './password.js';
 import type { AttendanceRecord, AuthUser, Config, DateOverride, LogEntry, PlannedAction, PersistedState, ScheduleException, ScheduleExceptionType, ScheduleRule, ScheduleTimeOverrides, UserRole } from './types.js';
 
@@ -52,6 +52,7 @@ export class Store {
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     this.createSchema();
     this.migrateLegacyJson();
+    this.seedNotificationRecipientsFromEnv();
     if (options.seedAdmin !== false) this.seedAdmin();
   }
 
@@ -227,6 +228,15 @@ export class Store {
       if (email && recipientCount === 0) this.db.prepare('INSERT OR IGNORE INTO notification_recipients(email) VALUES (?)').run(email.trim());
     }
     this.setSetting('legacy_recipient_migrated', '1');
+  }
+
+  private seedNotificationRecipientsFromEnv(): void {
+    const recipients = notificationRecipientsFromEnv();
+    if (!recipients.length) return;
+    const count = Number((this.db.prepare('SELECT COUNT(*) AS count FROM notification_recipients').get() as Row).count);
+    if (count > 0) return;
+    const insert = this.db.prepare('INSERT OR IGNORE INTO notification_recipients(email) VALUES (?)');
+    for (const email of recipients) insert.run(email);
   }
 
   private seedAdmin(): void {
