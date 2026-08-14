@@ -27,6 +27,8 @@ npm run dev
 
 Only one server instance may own the scheduler and browser profile at a time. The process lock is stored at `data/rigohr-attendance.lock` by default (override with `RIGOHR_INSTANCE_LOCK`). Headless runs must use the same authenticated persistent profile or provide `RIGOHR_USERNAME` and `RIGOHR_PASSWORD` in the process environment.
 
+`COOKIE_SECURE=true` is safe behind HTTPS; local HTTP requests automatically receive a non-`Secure` session cookie so sign-in works at `http://localhost:4317`.
+
 Use `npm run dev:once` when you want a single non-watching server process.
 
 ### Docker Compose production run

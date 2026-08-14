@@ -37,7 +37,7 @@ app.post('/api/auth/login', (req, res) => {
   const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   if (!email || !password || email.length > 320 || password.length > 512) return res.status(401).json({ error: 'Invalid email or password.' });
-  const user = login(email, password, res);
+  const user = login(email, password, req, res);
   if (!user) return res.status(401).json({ error: 'Invalid email or password.' });
   res.json({ user });
 });

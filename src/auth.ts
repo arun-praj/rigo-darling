@@ -17,8 +17,15 @@ function cookieValue(request: Request): string | undefined {
   return match ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1)) : undefined;
 }
 
-function setSessionCookie(response: Response, token: string, maxAge = SESSION_MAX_AGE_SECONDS): void {
-  const secure = process.env.COOKIE_SECURE === 'true' ? '; Secure' : '';
+export function shouldUseSecureCookie(request: Pick<Request, 'protocol' | 'headers'>): boolean {
+  if (process.env.COOKIE_SECURE !== 'true') return false;
+  const forwardedProtocol = request.headers['x-forwarded-proto'];
+  const protocol = Array.isArray(forwardedProtocol) ? forwardedProtocol[0] : forwardedProtocol;
+  return request.protocol === 'https' || protocol?.split(',')[0]?.trim().toLowerCase() === 'https';
+}
+
+function setSessionCookie(request: Request, response: Response, token: string, maxAge = SESSION_MAX_AGE_SECONDS): void {
+  const secure = shouldUseSecureCookie(request) ? '; Secure' : '';
   response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`);
 }
 
@@ -58,7 +65,7 @@ export function requireAdmin(request: Request, response: Response, next: NextFun
   next();
 }
 
-export function login(email: string, password: string, response: Response): AuthUser | undefined {
+export function login(email: string, password: string, request: Request, response: Response): AuthUser | undefined {
   const user = store.findUserByEmail(email);
   if (!user || !verifyPassword(password, user.passwordHash)) return undefined;
   const token = crypto.randomBytes(32).toString('base64url');
@@ -66,14 +73,14 @@ export function login(email: string, password: string, response: Response): Auth
   const expiresAt = new Date(createdAt.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
   store.deleteExpiredSessions(createdAt.toISOString());
   store.createSession(tokenHash(token), user.id, createdAt.toISOString(), expiresAt.toISOString());
-  setSessionCookie(response, token);
+  setSessionCookie(request, response, token);
   return publicUser(user);
 }
 
 export function logout(request: Request, response: Response): void {
   const token = cookieValue(request);
   if (token) store.deleteSession(tokenHash(token));
-  setSessionCookie(response, '', 0);
+  setSessionCookie(request, response, '', 0);
 }
 
 export function createUser(email: string, password: string, role: UserRole): AuthUser {
