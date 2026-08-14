@@ -15,6 +15,7 @@ const PAGE_SETTLE_MIN_MS = 1_000;
 const PAGE_SETTLE_MAX_MS = 2_000;
 const PAGE_STATE_TIMEOUT_MS = 20_000;
 const PAGE_STATE_POLL_MS = 250;
+const POST_CLICK_DELAY_MS = 750;
 
 function pageSettleDelayMs(): number {
   return PAGE_SETTLE_MIN_MS + Math.floor(Math.random() * (PAGE_SETTLE_MAX_MS - PAGE_SETTLE_MIN_MS + 1));
@@ -165,6 +166,11 @@ export class RigoBrowser {
     await page.waitForTimeout(pageSettleDelayMs());
   }
 
+  private async settleAfterClick(page: Page): Promise<void> {
+    await page.waitForTimeout(POST_CLICK_DELAY_MS);
+    await this.settlePage(page);
+  }
+
   private async waitForPostLoginState(page: Page): Promise<void> {
     const deadline = Date.now() + PAGE_STATE_TIMEOUT_MS;
     while (Date.now() < deadline) {
@@ -212,22 +218,34 @@ export class RigoBrowser {
   }
 
   private async submitClockConfirmationIfPresent(page: Page, action: ActionType, evidenceLabel: string, screenshots: Evidence[]): Promise<boolean> {
-    const modal = this.clockConfirmationModal(page, action);
-    if (await modal.count() === 0) return false;
-    const modalText = await modal.innerText().catch(() => '');
-    if (!hasClockConfirmationModalText(modalText, action)) return false;
-    const submit = modal.getByRole('button', { name: /^submit$/i }).filter({ visible: true }).first();
-    if (await submit.count() !== 1 || !(await submit.isEnabled())) {
-      throw new Error(`RigoHR showed a ${action} confirmation dialog, but its Submit button was not usable.`);
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const bodyText = await page.locator('body').innerText().catch(() => '');
+      if (hasClockConfirmationModalText(bodyText, action)) {
+        const modal = this.clockConfirmationModal(page, action);
+        const scopedSubmit = await modal.count() > 0
+          ? modal.getByRole('button', { name: /submit/i }).filter({ visible: true }).first()
+          : undefined;
+        const pageSubmit = page.getByRole('button', { name: /submit/i }).filter({ visible: true }).first();
+        const textSubmit = page.locator('button').filter({ hasText: /^\s*submit\s*$/i, visible: true }).first();
+        const submit = scopedSubmit && await scopedSubmit.count() > 0 ? scopedSubmit : await pageSubmit.count() > 0 ? pageSubmit : textSubmit;
+        if (await submit.count() > 0) {
+          if (!(await submit.isEnabled())) {
+            throw new Error(`RigoHR showed a ${action} confirmation dialog, but its Submit button was disabled.`);
+          }
+          const beforeSubmit = await this.capture(`${evidenceLabel}-07-clock-confirmation-before-submit`);
+          if (beforeSubmit) screenshots.push(beforeSubmit);
+          await this.settlePage(page);
+          await submit.click();
+          await this.settleAfterClick(page);
+          const afterSubmit = await this.capture(`${evidenceLabel}-08-after-clock-confirmation-submit`);
+          if (afterSubmit) screenshots.push(afterSubmit);
+          return true;
+        }
+      }
+      await page.waitForTimeout(250);
     }
-    const beforeSubmit = await this.capture(`${evidenceLabel}-07-clock-confirmation-before-submit`);
-    if (beforeSubmit) screenshots.push(beforeSubmit);
-    await this.settlePage(page);
-    await submit.click();
-    await this.settlePage(page);
-    const afterSubmit = await this.capture(`${evidenceLabel}-08-after-clock-confirmation-submit`);
-    if (afterSubmit) screenshots.push(afterSubmit);
-    return true;
+    return false;
   }
 
   private async waitForInitialState(page: Page): Promise<void> {
@@ -312,7 +330,7 @@ export class RigoBrowser {
       await this.settlePage(page);
       await skipToHr.click();
       await this.waitForPostLoginState(page);
-      await this.settlePage(page);
+      await this.settleAfterClick(page);
       if (!(await this.waitForAttendanceHome(page))) {
         throw new Error(`RigoHR did not reach the attendance home after skipping the clock gate: ${new URL(page.url()).pathname}`);
       }
@@ -410,7 +428,7 @@ export class RigoBrowser {
       if (beforeClick) screenshots.push(beforeClick);
       await this.settlePage(page);
       await button.click();
-      await this.settlePage(page);
+      await this.settleAfterClick(page);
       const modalSubmitted = await this.submitClockConfirmationIfPresent(page, action, evidenceLabel, screenshots);
       const afterClick = await this.capture(`${evidenceLabel}-07-after-${modalSubmitted ? `${action}-submit` : `${action}-click`}-before-refresh`);
       if (afterClick) screenshots.push(afterClick);
@@ -421,7 +439,7 @@ export class RigoBrowser {
         const skipToHr = this.skipToHrControl(page);
         if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
           await skipToHr.click();
-          await this.settlePage(page);
+          await this.settleAfterClick(page);
         }
       }
       if (!(await this.isAttendanceHome(page))) {
