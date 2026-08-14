@@ -33,6 +33,11 @@ export function hasAttendanceHomeText(value: string): boolean {
   return /\bmy\s+time\s+and\s+attendance\b/i.test(value);
 }
 
+export function hasClockConfirmationModalText(value: string, action: ActionType): boolean {
+  const clockLabel = action === 'check-in' ? /clock\s*in/i : /clock\s*out/i;
+  return clockLabel.test(value) && /\bsubmit\b/i.test(value);
+}
+
 export function isAllowedRigoUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -199,6 +204,30 @@ export class RigoBrowser {
 
   private clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
     return page.locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? 'clock[- ]?in' : 'clock[- ]?out', 'i'), visible: true }).first();
+  }
+
+  private clockConfirmationModal(page: Page, action: ActionType): ReturnType<Page['locator']> {
+    const clockLabel = action === 'check-in' ? /clock\s*in/i : /clock\s*out/i;
+    return page.locator('dialog, [role="dialog"], [aria-modal="true"], [data-state="open"], [class*="modal"]').filter({ hasText: clockLabel, visible: true }).filter({ hasText: /\bsubmit\b/i, visible: true }).first();
+  }
+
+  private async submitClockConfirmationIfPresent(page: Page, action: ActionType, evidenceLabel: string, screenshots: Evidence[]): Promise<boolean> {
+    const modal = this.clockConfirmationModal(page, action);
+    if (await modal.count() === 0) return false;
+    const modalText = await modal.innerText().catch(() => '');
+    if (!hasClockConfirmationModalText(modalText, action)) return false;
+    const submit = modal.getByRole('button', { name: /^submit$/i }).filter({ visible: true }).first();
+    if (await submit.count() !== 1 || !(await submit.isEnabled())) {
+      throw new Error(`RigoHR showed a ${action} confirmation dialog, but its Submit button was not usable.`);
+    }
+    const beforeSubmit = await this.capture(`${evidenceLabel}-07-clock-confirmation-before-submit`);
+    if (beforeSubmit) screenshots.push(beforeSubmit);
+    await this.settlePage(page);
+    await submit.click();
+    await this.settlePage(page);
+    const afterSubmit = await this.capture(`${evidenceLabel}-08-after-clock-confirmation-submit`);
+    if (afterSubmit) screenshots.push(afterSubmit);
+    return true;
   }
 
   private async waitForInitialState(page: Page): Promise<void> {
@@ -382,7 +411,8 @@ export class RigoBrowser {
       await this.settlePage(page);
       await button.click();
       await this.settlePage(page);
-      const afterClick = await this.capture(`${evidenceLabel}-07-after-${action}-before-refresh`);
+      const modalSubmitted = await this.submitClockConfirmationIfPresent(page, action, evidenceLabel, screenshots);
+      const afterClick = await this.capture(`${evidenceLabel}-07-after-${modalSubmitted ? `${action}-submit` : `${action}-click`}-before-refresh`);
       if (afterClick) screenshots.push(afterClick);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await this.settlePage(page);
