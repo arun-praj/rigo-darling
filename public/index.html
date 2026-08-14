@@ -578,6 +578,30 @@
     $('#punchInNow').onclick=()=>hardPunch('check-in'); $('#punchOutNow').onclick=()=>hardPunch('check-out');
     async function manual(action) { try{const result=await api('/api/manual/'+action,{method:'POST'});msg(result.state==='scheduled'?'Automatic '+action+' scheduled.':'No '+action+' action is eligible right now.');await refreshStatus();await refreshLogs();}catch(error){msg(error.message,'error');} }
     $('#refreshLogs').onclick=()=>{logPage=1;refreshLogs();}; $('#logDate').onchange=()=>{logPage=1;refreshLogs();}; $('#logStatus').onchange=()=>{logPage=1;refreshLogs();}; $('#prevLogs').onclick=()=>{if(logPage>1){logPage-=1;refreshLogs();}}; $('#nextLogs').onclick=()=>{logPage+=1;refreshLogs();}; setInterval(()=>{void refreshStatus();void refreshLogs();},10000); load().catch(error=>msg(error.message,'error'));
+    // Refreshing the activity list replaces the <details> nodes. Preserve open
+    // rows across those refreshes without forcing a row open after the user closes it.
+    const refreshLogsWithOpenState = refreshLogs;
+    function activityLogOpenKey(detail) {
+      const message = detail.querySelector('.log-summary-text')?.textContent || '';
+      const date = detail.querySelector('.log-date')?.textContent || '';
+      return `${date}\u0000${message}`;
+    }
+    refreshLogs = async function() {
+      const openKeys = new Map();
+      document.querySelectorAll('#logs details.log[open]').forEach(detail => {
+        const key = activityLogOpenKey(detail);
+        openKeys.set(key, (openKeys.get(key) || 0) + 1);
+      });
+      await refreshLogsWithOpenState();
+      document.querySelectorAll('#logs details.log').forEach(detail => {
+        const key = activityLogOpenKey(detail);
+        const remaining = openKeys.get(key) || 0;
+        if (remaining > 0) {
+          detail.open = true;
+          openKeys.set(key, remaining - 1);
+        }
+      });
+    };
   </script>
 </body>
 </html>
