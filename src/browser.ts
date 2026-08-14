@@ -194,11 +194,11 @@ export class RigoBrowser {
   }
 
   private skipToHrControl(page: Page): ReturnType<Page['locator']> {
-    return page.locator('a, button').filter({ hasText: /skip[\s\S]*go to[\s\S]*hr/i }).first();
+    return page.locator('a, button').filter({ hasText: /skip[\s\S]*go to[\s\S]*hr/i, visible: true }).first();
   }
 
   private clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
-    return page.locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? 'clock[- ]?in' : 'clock[- ]?out', 'i') }).first();
+    return page.locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? 'clock[- ]?in' : 'clock[- ]?out', 'i'), visible: true }).first();
   }
 
   private async waitForInitialState(page: Page): Promise<void> {
@@ -275,24 +275,32 @@ export class RigoBrowser {
       }
     }
     await this.dismissOptionalModal(page, evidenceLabel, screenshots);
-    if (!(await this.isAttendanceHome(page))) {
+    const skipToHr = this.skipToHrControl(page);
+    const hasVisibleSkipToHr = await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false);
+    if (hasVisibleSkipToHr) {
+      const clockGate = await this.capture(`${evidenceLabel}-03-clock-landing-before-skip`);
+      if (clockGate) screenshots.push(clockGate);
+      await this.settlePage(page);
+      await skipToHr.click();
+      await this.waitForPostLoginState(page);
+      await this.settlePage(page);
+      if (!(await this.waitForAttendanceHome(page))) {
+        throw new Error(`RigoHR did not reach the attendance home after skipping the clock gate: ${new URL(page.url()).pathname}`);
+      }
+      const afterSkip = await this.capture(`${evidenceLabel}-04-after-skip-to-hr`);
+      if (afterSkip) screenshots.push(afterSkip);
+    } else if (!(await this.isAttendanceHome(page))) {
       const clockGate = await this.capture(`${evidenceLabel}-03-clock-landing-before-action`);
       if (clockGate) screenshots.push(clockGate);
       const actionButton = action ? this.clockActionControl(page, action) : undefined;
       if (actionButton && await actionButton.count() === 1 && await actionButton.isVisible() && await actionButton.isEnabled()) {
         // Punch actions can be submitted directly from the clock landing page.
       } else {
-        const skip = this.skipToHrControl(page);
-        if (await skip.count() > 0) {
-          await this.settlePage(page);
-          await skip.click();
-          await this.waitForPostLoginState(page);
-          await this.settlePage(page);
-          const afterSkip = await this.capture(`${evidenceLabel}-04-after-skip-to-hr`);
-          if (afterSkip) screenshots.push(afterSkip);
-        } else if (!action) {
+        if (!action) {
           await this.safeGoto(`${APP_ORIGIN}/hr/employee`);
-          await this.waitForPostLoginState(page);
+          if (!(await this.waitForAttendanceHome(page))) {
+            throw new Error(`Unexpected RigoHR state after attendance navigation: ${new URL(page.url()).pathname}`);
+          }
         } else {
           throw new Error('RigoHR showed a clock landing page, but no usable clock control or skip-to-HR link was found.');
         }
@@ -378,6 +386,17 @@ export class RigoBrowser {
       if (afterClick) screenshots.push(afterClick);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await this.settlePage(page);
+      await this.waitForPostLoginState(page);
+      if (!(await this.isAttendanceHome(page))) {
+        const skipToHr = this.skipToHrControl(page);
+        if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
+          await skipToHr.click();
+          await this.settlePage(page);
+        }
+      }
+      if (!(await this.isAttendanceHome(page))) {
+        throw new Error(`RigoHR did not return to the attendance home after ${action} refresh: ${new URL(page.url()).pathname}`);
+      }
       const afterRefresh = await this.capture(`${evidenceLabel}-08-after-refresh`);
       if (afterRefresh) screenshots.push(afterRefresh);
       return screenshots;
