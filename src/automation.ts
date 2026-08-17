@@ -31,6 +31,18 @@ export function reconcilePunchOutcome(action: ActionType, record: AttendanceReco
     message: `${displayAction(action)} result could not be verified after the browser session closed; the punch was not retried.`,
   };
 }
+
+/**
+ * A manual schedule override is an exact execution target, not a one-minute
+ * attendance window. Once its target has passed, the next scheduler tick must
+ * still be allowed to execute it; scheduledFor already prevents early runs.
+ */
+export function isScheduledExecutionTimeAllowed(action: Pick<PlannedAction, 'targetWindow'>, localTime: string): boolean {
+  if (action.targetWindow.start === action.targetWindow.end) {
+    return minutes(localTime) >= minutes(action.targetWindow.start);
+  }
+  return inWindow(localTime, action.targetWindow);
+}
 let schedulerStartedAt: Date | undefined;
 let schedulerLastTickAt: Date | undefined;
 let schedulerLastError = false;
@@ -68,6 +80,7 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   const seedOffset = store.getRandomSeed(parts.date);
   const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset, selected.rule.minDurationMinutes, selected.rule.maxDurationMinutes);
   const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
+  const manualOverride = Boolean(scheduledOverride[action]);
   const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
   validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule, {
     allowCheckInWindowOverride: Boolean(scheduledOverride['check-in']),
@@ -75,11 +88,12 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
     allowDurationOverride: Boolean(scheduledOverride['check-in'] || scheduledOverride['check-out']),
   });
   const targetWindow = action === 'check-in'
-    ? { start: randomized.checkIn, end: scheduledOverride['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }
-    : { start: randomized.checkOut, end: scheduledOverride['check-out'] ? randomized.checkOut : selected.rule.checkOutWindow.end };
+    ? { start: randomized.checkIn, end: manualOverride ? randomized.checkIn : selected.rule.checkInWindow.end }
+    : { start: randomized.checkOut, end: manualOverride ? randomized.checkOut : selected.rule.checkOutWindow.end };
   const inPreparationWindow = isWithinLeadWindow(parts.time, targetWindow.start, AUTO_LEAD_MINUTES);
   const punchWindowOpen = inWindow(parts.time, targetWindow);
-  if (!inPreparationWindow && !punchWindowOpen) return undefined;
+  const manualTargetReached = manualOverride && minutes(parts.time) >= minutes(targetWindow.start);
+  if (!inPreparationWindow && !punchWindowOpen && !manualTargetReached) return undefined;
   const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return undefined;
   if (action === 'check-out') {
@@ -315,7 +329,7 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
     await notify(action, 'failed', message);
     throw new Error(message);
   }
-  if (!inWindow(parts.time, action.targetWindow)) {
+  if (!isScheduledExecutionTimeAllowed(action, parts.time)) {
     const message = 'The current time is outside the configured window.';
     await notify(action, 'failed', message);
     throw new Error(message);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hardPunchDecision, reconcilePunchOutcome } from '../src/automation.js';
+import { hardPunchDecision, isScheduledExecutionTimeAllowed, reconcilePunchOutcome } from '../src/automation.js';
 
 describe('hard punch safety checks', () => {
   const atSixPm = new Date('2026-08-13T12:15:00Z'); // 18:00 Asia/Kathmandu
@@ -39,5 +39,20 @@ describe('hard punch safety checks', () => {
     expect(result.verified).toBe(false);
     expect(result.message).toMatch(/could not be verified/);
     expect(result.message).toMatch(/not retried/);
+  });
+});
+
+describe('manual schedule execution timing', () => {
+  it('allows an exact manual target to execute on a late scheduler tick', () => {
+    const action = { targetWindow: { start: '13:15', end: '13:15' } };
+    expect(isScheduledExecutionTimeAllowed(action, '13:14')).toBe(false);
+    expect(isScheduledExecutionTimeAllowed(action, '13:15')).toBe(true);
+    expect(isScheduledExecutionTimeAllowed(action, '13:16')).toBe(true);
+  });
+
+  it('keeps ordinary schedule windows bounded by their configured end', () => {
+    const action = { targetWindow: { start: '09:30', end: '10:45' } };
+    expect(isScheduledExecutionTimeAllowed(action, '10:45')).toBe(true);
+    expect(isScheduledExecutionTimeAllowed(action, '10:46')).toBe(false);
   });
 });
