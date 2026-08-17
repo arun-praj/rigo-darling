@@ -84,6 +84,19 @@ describe('schedule safety rules', () => {
     expect(next).toMatchObject({ action: 'check-in', windowStart: '08:00', windowEnd: '08:00', manualOverride: true, availableNow: false });
   });
 
+  it('keeps the planned punch-in separate when punch-out is the next action', () => {
+    const next = nextScheduledAction(
+      defaultConfig(),
+      new Date('2026-08-13T16:00:00Z'),
+      {},
+      undefined,
+      { '2026-08-13': { 'check-out': '22:00' } },
+    );
+
+    expect(next).toMatchObject({ action: 'check-out', windowStart: '22:00', plannedCheckIn: expect.any(String) });
+    expect(next?.plannedCheckIn).not.toBe(next?.windowStart);
+  });
+
   it('skips dates excluded by a leave or holiday calendar', () => {
     const config = defaultConfig();
     const next = nextScheduledAction(config, new Date('2026-08-13T02:30:00Z'), undefined, new Set(['2026-08-13', '2026-08-14']));
