@@ -231,7 +231,13 @@ app.put('/api/schedule-times/:date', async (req, res) => {
     const existingOverrides = store.scheduleTimeOverrides[date] || {};
     const plannedCheckIn = action === 'check-in' ? time : existingOverrides['check-in'] || base.checkIn;
     const plannedCheckOut = action === 'check-out' ? time : existingOverrides['check-out'] || base.checkOut;
-    validatePlannedPunchTimes(plannedCheckIn, plannedCheckOut, selected.rule);
+    // An explicitly edited schedule time is an intentional override of the
+    // configured attendance window. Keep the planned-span safety check, but
+    // do not reject the user's explicit time for being outside that window.
+    validatePlannedPunchTimes(plannedCheckIn, plannedCheckOut, selected.rule, {
+      allowCheckInWindowOverride: action === 'check-in' || Boolean(existingOverrides['check-in']),
+      allowCheckOutWindowOverride: action === 'check-out' || Boolean(existingOverrides['check-out']),
+    });
     store.setScheduleTimeOverride(date, action, time);
     const cancelled = store.cancelScheduledActionsForDate(date, `Schedule time changed for ${action}; it will be re-evaluated automatically.`);
     store.addLog({ id: makeId('log'), timestamp: new Date().toISOString(), date, action, status: 'info', errorCategory: 'schedule_time_override', scheduledFor: `${date}T${time}:00`, message: `Automation ${action === 'check-in' ? 'punch-in' : 'punch-out'} time set to ${time}. No attendance record was changed.${cancelled.length ? ` ${cancelled.length} scheduled action(s) will be re-evaluated.` : ''}` });

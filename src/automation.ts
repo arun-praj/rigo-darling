@@ -69,10 +69,13 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset, selected.rule.minDurationMinutes, selected.rule.maxDurationMinutes);
   const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
   const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
-  validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule);
+  validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule, {
+    allowCheckInWindowOverride: Boolean(scheduledOverride['check-in']),
+    allowCheckOutWindowOverride: Boolean(scheduledOverride['check-out']),
+  });
   const targetWindow = action === 'check-in'
-    ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
-    : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };
+    ? { start: randomized.checkIn, end: scheduledOverride['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }
+    : { start: randomized.checkOut, end: scheduledOverride['check-out'] ? randomized.checkOut : selected.rule.checkOutWindow.end };
   const inPreparationWindow = isWithinLeadWindow(parts.time, targetWindow.start, AUTO_LEAD_MINUTES);
   const punchWindowOpen = inWindow(parts.time, targetWindow);
   if (!inPreparationWindow && !punchWindowOpen) return undefined;
@@ -120,10 +123,13 @@ function eligibilityReason(action: ActionType, now: Date): string {
   const randomizedBase = getRandomPunchTimes(parts.date, selected.rule.checkInWindow, selected.rule.checkOutWindow, seedOffset, selected.rule.minDurationMinutes, selected.rule.maxDurationMinutes);
   const scheduledOverride = store.scheduleTimeOverrides[parts.date] || {};
   const randomized = { checkIn: scheduledOverride['check-in'] || randomizedBase.checkIn, checkOut: scheduledOverride['check-out'] || randomizedBase.checkOut };
-  validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule);
+  validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule, {
+    allowCheckInWindowOverride: Boolean(scheduledOverride['check-in']),
+    allowCheckOutWindowOverride: Boolean(scheduledOverride['check-out']),
+  });
   const targetWindow = action === 'check-in'
-    ? { start: randomized.checkIn, end: selected.rule.checkInWindow.end }
-    : { start: randomized.checkOut, end: selected.rule.checkOutWindow.end };
+    ? { start: randomized.checkIn, end: scheduledOverride['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }
+    : { start: randomized.checkOut, end: scheduledOverride['check-out'] ? randomized.checkOut : selected.rule.checkOutWindow.end };
   if (!isWithinLeadWindow(parts.time, targetWindow.start, AUTO_LEAD_MINUTES) && !inWindow(parts.time, targetWindow)) return `${displayAction(action)}: current time ${parts.time} is outside the 15-minute preparation window before ${targetWindow.start}.`;
   const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return `${displayAction(action)}: an action is already ${existing.state} for today.`;

@@ -112,13 +112,16 @@ export function validatePlannedPunchTimes(
   checkIn: string,
   checkOut: string,
   rule: Pick<ScheduleRule, 'checkInWindow' | 'checkOutWindow' | 'minDurationMinutes' | 'maxDurationMinutes'>,
+  options: { allowWindowOverride?: boolean; allowCheckInWindowOverride?: boolean; allowCheckOutWindowOverride?: boolean } = {},
 ): void {
   const checkInMinutes = minutes(checkIn);
   const checkOutMinutes = minutes(checkOut);
-  if (checkInMinutes < minutes(rule.checkInWindow.start) || checkInMinutes > minutes(rule.checkInWindow.end)) {
+  const allowCheckInWindowOverride = options.allowWindowOverride || options.allowCheckInWindowOverride;
+  const allowCheckOutWindowOverride = options.allowWindowOverride || options.allowCheckOutWindowOverride;
+  if (!allowCheckInWindowOverride && (checkInMinutes < minutes(rule.checkInWindow.start) || checkInMinutes > minutes(rule.checkInWindow.end))) {
     throw new Error(`Punch-in time must be within ${rule.checkInWindow.start}–${rule.checkInWindow.end}.`);
   }
-  if (checkOutMinutes <= minutes(rule.checkOutWindow.start) || checkOutMinutes >= minutes(rule.checkOutWindow.end)) {
+  if (!allowCheckOutWindowOverride && (checkOutMinutes <= minutes(rule.checkOutWindow.start) || checkOutMinutes >= minutes(rule.checkOutWindow.end))) {
     throw new Error(`Punch-out time must be after ${rule.checkOutWindow.start} and before ${rule.checkOutWindow.end}.`);
   }
   const duration = checkOutMinutes - checkInMinutes;
@@ -213,6 +216,7 @@ export interface NextScheduledAction {
   plannedCheckIn: string;
   scheduleSource: string;
   availableNow: boolean;
+  manualOverride?: boolean;
 }
 
 export interface ForecastDay {
@@ -242,7 +246,10 @@ function punchTimesForDate(date: string, rule: ScheduleRule | DateOverride, seed
   const randomized = getRandomPunchTimes(date, rule.checkInWindow, rule.checkOutWindow, seeds[date] || 0, rule.minDurationMinutes, rule.maxDurationMinutes);
   const override = timeOverrides[date] || {};
   const planned = { checkIn: override['check-in'] || randomized.checkIn, checkOut: override['check-out'] || randomized.checkOut };
-  validatePlannedPunchTimes(planned.checkIn, planned.checkOut, rule);
+  validatePlannedPunchTimes(planned.checkIn, planned.checkOut, rule, {
+    allowCheckInWindowOverride: Boolean(override['check-in']),
+    allowCheckOutWindowOverride: Boolean(override['check-out']),
+  });
   return planned;
 }
 
@@ -281,8 +288,8 @@ export function nextScheduledAction(config: Config, now: Date, seeds?: Record<st
     const seedOffset = seeds ? (seeds[date] || 0) : 0;
     const randomized = punchTimesForDate(date, selected.rule, seeds || {}, timeOverrides);
     const windows: Array<[ActionType, { start: string; end: string }]> = [
-      ['check-in', { start: randomized.checkIn, end: selected.rule.checkInWindow.end }],
-      ['check-out', { start: randomized.checkOut, end: selected.rule.checkOutWindow.end }],
+      ['check-in', { start: randomized.checkIn, end: timeOverrides[date]?.['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }],
+      ['check-out', { start: randomized.checkOut, end: timeOverrides[date]?.['check-out'] ? randomized.checkOut : selected.rule.checkOutWindow.end }],
     ];
     let expiredToday: NextScheduledAction | undefined;
     for (const [action, window] of windows) {
@@ -300,6 +307,7 @@ export function nextScheduledAction(config: Config, now: Date, seeds?: Record<st
         plannedCheckIn: randomized.checkIn,
         scheduleSource: selected.source,
         availableNow: offset === 0 && currentMinutes >= start && currentMinutes <= end,
+        manualOverride: Boolean(timeOverrides[date]?.[action]),
       };
       if (offset === 0 && currentMinutes > end) {
         if (action === 'check-out') expiredToday = { ...result, windowExpired: true };
