@@ -112,7 +112,7 @@ export function validatePlannedPunchTimes(
   checkIn: string,
   checkOut: string,
   rule: Pick<ScheduleRule, 'checkInWindow' | 'checkOutWindow' | 'minDurationMinutes' | 'maxDurationMinutes'>,
-  options: { allowWindowOverride?: boolean; allowCheckInWindowOverride?: boolean; allowCheckOutWindowOverride?: boolean } = {},
+  options: { allowWindowOverride?: boolean; allowCheckInWindowOverride?: boolean; allowCheckOutWindowOverride?: boolean; allowDurationOverride?: boolean } = {},
 ): void {
   const checkInMinutes = minutes(checkIn);
   const checkOutMinutes = minutes(checkOut);
@@ -125,7 +125,7 @@ export function validatePlannedPunchTimes(
     throw new Error(`Punch-out time must be after ${rule.checkOutWindow.start} and before ${rule.checkOutWindow.end}.`);
   }
   const duration = checkOutMinutes - checkInMinutes;
-  if (duration < rule.minDurationMinutes || duration >= rule.maxDurationMinutes) {
+  if (!options.allowDurationOverride && (duration < rule.minDurationMinutes || duration >= rule.maxDurationMinutes)) {
     throw new Error(`Planned span must be at least ${rule.minDurationMinutes / 60} hours and less than ${rule.maxDurationMinutes / 60} hours.`);
   }
 }
@@ -249,6 +249,7 @@ function punchTimesForDate(date: string, rule: ScheduleRule | DateOverride, seed
   validatePlannedPunchTimes(planned.checkIn, planned.checkOut, rule, {
     allowCheckInWindowOverride: Boolean(override['check-in']),
     allowCheckOutWindowOverride: Boolean(override['check-out']),
+    allowDurationOverride: Boolean(override['check-in'] || override['check-out']),
   });
   return planned;
 }

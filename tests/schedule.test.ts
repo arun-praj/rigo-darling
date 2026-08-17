@@ -16,6 +16,11 @@ describe('schedule safety rules', () => {
     expect(() => validatePlannedPunchTimes('08:00', '19:00', rule, { allowCheckInWindowOverride: true })).toThrow(/after 19:00/);
     expect(() => validatePlannedPunchTimes('08:00', '17:00', rule)).toThrow(/within/);
   });
+  it('allows the Next action manual override to ignore planned duration limits', () => {
+    const rule = defaultConfig().weekly[0];
+    expect(() => validatePlannedPunchTimes('08:00', '23:01', rule, { allowWindowOverride: true, allowDurationOverride: true })).not.toThrow();
+    expect(() => validatePlannedPunchTimes('08:00', '23:01', rule, { allowWindowOverride: true })).toThrow(/less than 10/);
+  });
   it('allows exactly nine hours and blocks less at the caller', () => {
     expect(durationMinutes('10:00', new Date('2026-08-13T13:59:00+05:45'), 'Asia/Kathmandu')).toBe(239);
     expect(addMinutesToTime('10:00', 540)).toBe('19:00');

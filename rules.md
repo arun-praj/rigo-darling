@@ -6,7 +6,7 @@ These are hard product rules. Any future UI, API, scheduler, randomizer, overrid
 
 - Automatically generated punch-in times must be selected inside the configured punch-in window.
 - Automatically generated punch-out times must be strictly after the configured shift-end/punch-out window start and strictly before the configured punch-out window end. For example, a `19:00–20:00` punch-out window produces a planned punch-out between `19:01` and `19:59`.
-- An explicitly edited schedule time may override its configured window; the planned span must still remain at least 9 hours and less than 10 hours.
+- An explicitly edited schedule time from the Next action section may override its configured window and planned span. Automatic scheduling and all other punch flows retain the planned-span safety limits.
 - The planned span is calculated from the planned punch-in and planned punch-out times, not from a later observed or manually recorded attendance value.
 - Planned span must never be less than 9 hours (`540` minutes).
 - Planned span must be less than 10 hours (`600` minutes). A duration of exactly 10 hours is invalid.

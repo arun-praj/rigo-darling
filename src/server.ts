@@ -237,6 +237,7 @@ app.put('/api/schedule-times/:date', async (req, res) => {
     validatePlannedPunchTimes(plannedCheckIn, plannedCheckOut, selected.rule, {
       allowCheckInWindowOverride: action === 'check-in' || Boolean(existingOverrides['check-in']),
       allowCheckOutWindowOverride: action === 'check-out' || Boolean(existingOverrides['check-out']),
+      allowDurationOverride: true,
     });
     store.setScheduleTimeOverride(date, action, time);
     const cancelled = store.cancelScheduledActionsForDate(date, `Schedule time changed for ${action}; it will be re-evaluated automatically.`);

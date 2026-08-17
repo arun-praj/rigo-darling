@@ -72,6 +72,7 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule, {
     allowCheckInWindowOverride: Boolean(scheduledOverride['check-in']),
     allowCheckOutWindowOverride: Boolean(scheduledOverride['check-out']),
+    allowDurationOverride: Boolean(scheduledOverride['check-in'] || scheduledOverride['check-out']),
   });
   const targetWindow = action === 'check-in'
     ? { start: randomized.checkIn, end: scheduledOverride['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }
@@ -126,6 +127,7 @@ function eligibilityReason(action: ActionType, now: Date): string {
   validatePlannedPunchTimes(randomized.checkIn, randomized.checkOut, selected.rule, {
     allowCheckInWindowOverride: Boolean(scheduledOverride['check-in']),
     allowCheckOutWindowOverride: Boolean(scheduledOverride['check-out']),
+    allowDurationOverride: Boolean(scheduledOverride['check-in'] || scheduledOverride['check-out']),
   });
   const targetWindow = action === 'check-in'
     ? { start: randomized.checkIn, end: scheduledOverride['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }
