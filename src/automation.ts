@@ -168,17 +168,12 @@ export async function manualRequest(action: ActionType, now = new Date()): Promi
   return plan;
 }
 
-export function hardPunchDecision(action: ActionType, record: AttendanceRecord | undefined, now: Date, timezoneName: string, minDurationMinutes: number): { state: 'eligible' | 'skipped' | 'blocked'; message?: string } {
+export function hardPunchDecision(action: ActionType, record: AttendanceRecord | undefined): { state: 'eligible' | 'skipped' | 'blocked'; message?: string } {
   if (action === 'check-in' && record?.checkIn) {
     return { state: 'skipped', message: `Hard punch-in skipped: RigoHR already recorded punch-in at ${record.checkIn}; no punch-in was submitted.` };
   }
   if (action === 'check-out') {
     if (!record?.checkIn) return { state: 'blocked', message: 'Hard punch-out blocked because RigoHR has no recorded punch-in for today.' };
-    const elapsed = durationMinutes(to24Hour(record.checkIn), now, timezoneName);
-    if (elapsed < minDurationMinutes) {
-      const earliest = addMinutesToTime(to24Hour(record.checkIn), minDurationMinutes);
-      return { state: 'blocked', message: `Hard punch-out blocked until ${earliest}; only ${elapsed} minutes have elapsed since punch-in.` };
-    }
   }
   return { state: 'eligible' };
 }
@@ -216,7 +211,7 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
     before = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-before`);
     if (before.record) store.upsertAttendance(before.record);
     log(`Hard ${displayAction(action).toLowerCase()} preflight completed; schedule window is ignored.`, { runId: actionId, action, date: parts.date, status: 'info', scheduleSource, url: before.url, observedPageState: before.pageState, observedCheckIn: before.record?.checkIn, observedCheckOut: before.record?.checkOut, screenshots: before.screenshots });
-    const decision = hardPunchDecision(action, before.record, now, timezone(), safetyRule.minDurationMinutes);
+    const decision = hardPunchDecision(action, before.record);
     if (decision.state !== 'eligible') {
       const finished = { ...planned, state: decision.state, warning: decision.message } as PlannedAction;
       store.addAction(finished);
