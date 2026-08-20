@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasAttendanceHomeText, hasClockConfirmationModalText, isAllowedRigoUrl, isBrowserClosedError } from '../src/browser.js';
+import { hasAttendanceHomeText, hasClockConfirmationModalText, isAllowedRigoUrl, isBrowserClosedError, isUncertainPunchError } from '../src/browser.js';
 
 describe('RigoHR navigation allowlist', () => {
   it('allows only the specified app pages and authentication origin', () => {
@@ -15,6 +15,11 @@ describe('RigoHR browser lifecycle errors', () => {
   it('classifies a closed page/context error without confusing it with selector failure', () => {
     expect(isBrowserClosedError(new Error('locator.click: Target page, context or browser has been closed'))).toBe(true);
     expect(isBrowserClosedError(new Error('Expected enabled RigoHR check-out control was not found.'))).toBe(false);
+  });
+
+  it('treats a post-click state failure as uncertain so attendance can be reconciled', () => {
+    const error = Object.assign(new Error('RigoHR did not return to the attendance home after check-out refresh: /hr/employee'), { uncertainPunch: true });
+    expect(isUncertainPunchError(error)).toBe(true);
   });
 
   it('recognizes the rendered attendance section independently of ARIA role metadata', () => {

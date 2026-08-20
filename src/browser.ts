@@ -416,6 +416,7 @@ export class RigoBrowser {
 
   private async clickPunchInternal(action: 'check-in' | 'check-out', evidenceLabel = 'punch'): Promise<Evidence[]> {
     this.failureEvidence = [];
+    let punchSubmitted = false;
     try {
       const authenticated = await this.ensureAuthenticated(`${evidenceLabel}-auth`, action);
       const page = authenticated.page;
@@ -428,21 +429,22 @@ export class RigoBrowser {
       if (beforeClick) screenshots.push(beforeClick);
       await this.settlePage(page);
       await button.click();
+      // The control may submit immediately or open a confirmation dialog. In
+      // either case, a later navigation/state error must be reconciled rather
+      // than retried because the attendance side effect may already exist.
+      punchSubmitted = true;
       await this.settleAfterClick(page);
       const modalSubmitted = await this.submitClockConfirmationIfPresent(page, action, evidenceLabel, screenshots);
       const afterClick = await this.capture(`${evidenceLabel}-07-after-${modalSubmitted ? `${action}-submit` : `${action}-click`}-before-refresh`);
       if (afterClick) screenshots.push(afterClick);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await this.settlePage(page);
-      await this.waitForPostLoginState(page);
-      if (!(await this.isAttendanceHome(page))) {
-        const skipToHr = this.skipToHrControl(page);
-        if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
-          await skipToHr.click();
-          await this.settleAfterClick(page);
-        }
+      const skipToHr = this.skipToHrControl(page);
+      if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
+        await skipToHr.click();
+        await this.settleAfterClick(page);
       }
-      if (!(await this.isAttendanceHome(page))) {
+      if (!(await this.waitForAttendanceHome(page))) {
         throw new Error(`RigoHR did not return to the attendance home after ${action} refresh: ${new URL(page.url()).pathname}`);
       }
       const afterRefresh = await this.capture(`${evidenceLabel}-08-after-refresh`);
@@ -456,7 +458,7 @@ export class RigoBrowser {
       if (browserClosed) await this.close();
       if (error instanceof Error) {
         (error as PunchAwareError).failureEvidence = evidence;
-        if (browserClosed) (error as PunchAwareError).uncertainPunch = true;
+        if (browserClosed || punchSubmitted) (error as PunchAwareError).uncertainPunch = true;
       }
       throw error;
     } finally {
