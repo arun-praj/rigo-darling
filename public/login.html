@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#275de4" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="RigoHR" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>Sign in · RigoHR Attendance</title>
   <style>
     :root { color-scheme: light; --bg:#f6f8fb; --surface:#fff; --ink:#172033; --muted:#68758a; --line:#e3e8ef; --blue:#275de4; --blue-soft:#edf3ff; --red:#b42318; --red-soft:#fff1ef; font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
@@ -32,6 +40,7 @@
   </main>
   <script>
     const form=document.querySelector('#loginForm'), error=document.querySelector('#error'), submit=document.querySelector('#submit');
+    if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js', {scope:'/'}).catch(() => undefined); });
     form.addEventListener('submit',async event=>{event.preventDefault();error.textContent='';submit.disabled=true;try{const body={email:form.email.value,password:form.password.value};const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Unable to sign in.');window.location.assign('/');}catch(err){error.textContent=err.message;submit.disabled=false;}});
   </script>
 </body>

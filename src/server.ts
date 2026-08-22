@@ -54,7 +54,13 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.use((req, res, next) => {
-  if (req.path === '/login' || req.path.startsWith('/api/auth/')) return next();
+  if (
+    req.path === '/login' ||
+    req.path.startsWith('/api/auth/') ||
+    req.path === '/manifest.webmanifest' ||
+    req.path === '/sw.js' ||
+    req.path.startsWith('/icons/')
+  ) return next();
   requireAuth(req, res, next);
 });
 

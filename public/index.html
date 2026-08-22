@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#275de4" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="RigoHR" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>RigoHR · Attendance operations</title>
   <style>
     :root {
@@ -611,6 +619,11 @@
       $('#actions').className = '';
       $('#actions').innerHTML = `<div class="approval-card"><div class="approval-head"><span class="action-icon">⏱</span><div class="approval-copy"><p class="eyebrow" style="margin-bottom:4px">15-minute preparation window</p><h3>${actionLabel(preparationWindow.action)} is being prepared for ${escapeHtml(preparationWindow.target)}</h3><p>The scheduler is checking RigoHR before arming the automatic action. No punch has been submitted.</p></div><span class="status-pill">${preparationWindow.scheduled ? 'Scheduled' : 'Preparing'}</span></div><div class="approval-meta"><span class="meta-chip">Target ${escapeHtml(preparationWindow.target)} Nepal Time</span><span class="meta-chip">${preparationWindow.scheduled ? 'Cancellation available until execution' : 'Waiting for preflight to complete'}</span></div></div>`;
     };
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
+      });
+    }
   </script>
 </body>
 </html>
