@@ -42,8 +42,12 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-The application is exposed on port `4317`. SQLite data and the persistent
-headless Chromium profile are stored in named Docker volumes. Stop it with
+The application is exposed on port `4317`. Docker runs Chromium in headful mode
+inside an Xvfb display; open `http://<LAN-IP>:6080/vnc.html?autoconnect=1` to
+view and interact with that browser through the authenticated noVNC desktop.
+Set a separate `RIGOHR_VNC_PASSWORD` in `.env` before starting the container
+(the VNC protocol uses its first eight characters).
+SQLite data and the persistent Chromium profile are stored in named Docker volumes. Stop it with
 `docker compose down`; use `docker compose down -v` only if you intentionally
 want to delete those volumes and all stored application data.
 Docker Compose explicitly binds the application and published port to

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { readAttendanceDom } from '../src/attendance-dom.js';
+import { clockActionControl } from '../src/browser.js';
 
 let browser: Browser;
 let page: Page;
@@ -34,4 +35,12 @@ it('rejects unknown directions, malformed times and duplicate timestamps', async
   await expect(read(row('09', badge('clock', '9:59a')))).rejects.toThrow('direction-unrecognized');
   await expect(read(row('09', badge('arrow-down-left', '29:59a')))).rejects.toThrow('time-unrecognized');
   await expect(read(row('09', badge('arrow-down-left', '9:59a').repeat(2)))).rejects.toThrow('direction-ambiguous');
+});
+it('finds the redesigned header controls by their accessible names', async () => {
+  await page.setContent(`<header><button arialabel="Clock In Out"><span><span>Clock Out</span><p>07:05:57 PM</p></span></button></header>`);
+  const checkout = clockActionControl(page, 'check-out');
+  expect(await checkout.count()).toBe(1);
+  expect(await checkout.isVisible()).toBe(true);
+  expect(await checkout.isEnabled()).toBe(true);
+  expect(await clockActionControl(page, 'check-in').count()).toBe(0);
 });

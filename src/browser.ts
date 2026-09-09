@@ -40,6 +40,12 @@ export function hasClockConfirmationModalText(value: string, action: ActionType)
   return clockLabel.test(value) && /\bsubmit\b/i.test(value);
 }
 
+export function clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
+  const header = page.locator('header, [role="banner"]');
+  const name = action === 'check-in' ? /^clock\s*in\b/i : /^clock\s*out\b/i;
+  return header.getByRole('button', { name }).or(header.getByRole('link', { name }));
+}
+
 export function isAllowedRigoUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -210,7 +216,7 @@ export class RigoBrowser {
   }
 
   private clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
-    return page.locator('header, [role="banner"]').locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? '^\\s*clock[- ]?in\\b' : '^\\s*clock[- ]?out\\b', 'i'), visible: true });
+    return clockActionControl(page, action);
   }
 
   private clockConfirmationModal(page: Page, action: ActionType): ReturnType<Page['locator']> {
@@ -405,6 +411,7 @@ export class RigoBrowser {
       const page = authenticated.page;
       const screenshots = [...authenticated.screenshots];
       const button = this.clockActionControl(page, action);
+      await button.first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined);
       if (await button.count() !== 1 || !(await button.isVisible()) || !(await button.isEnabled())) {
         throw new Error(`Expected enabled RigoHR ${action} control was not found.`);
       }
