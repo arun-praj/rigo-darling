@@ -13,7 +13,6 @@ services:
       DISPLAY: ":99"
       RIGOHR_DB_PATH: /app/data/rigohr.sqlite
       RIGOHR_BROWSER_PROFILE: /app/.browser-profile
-      RIGOHR_VNC_PASSWORD: "${RIGOHR_VNC_PASSWORD:?Set RIGOHR_VNC_PASSWORD in .env}"
     ports:
       - "0.0.0.0:4317:4317"
       - "0.0.0.0:6080:6080"
