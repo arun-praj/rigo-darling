@@ -157,7 +157,13 @@ export class RigoBrowser {
 
   async openHome(): Promise<Page> {
     const page = await this.getPage();
-    await this.safeGoto('https://app.rigohr.com/hr');
+    // Keep the current authenticated page when it is already inside the
+    // allowed RigoHR app. Re-goto-ing /hr here caused every preflight,
+    // action, and verification phase to visibly reload the VNC browser.
+    const current = new URL(page.url());
+    if (current.origin !== APP_ORIGIN || !allowedAppPaths.has(current.pathname)) {
+      await this.safeGoto('https://app.rigohr.com/hr');
+    }
     return page;
   }
 
@@ -394,8 +400,6 @@ export class RigoBrowser {
         (error as PunchAwareError).failureEvidence = evidence;
       }
       throw error;
-    } finally {
-      await this.close();
     }
   }
 
@@ -451,8 +455,6 @@ export class RigoBrowser {
         if (browserClosed || punchSubmitted) (error as PunchAwareError).uncertainPunch = true;
       }
       throw error;
-    } finally {
-      await this.close();
     }
   }
 
