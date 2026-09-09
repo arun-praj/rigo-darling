@@ -96,10 +96,6 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   if (!inPreparationWindow && !punchWindowOpen && !manualTargetReached) return undefined;
   const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return undefined;
-  if (action === 'check-out') {
-    const verifiedCheckIn = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === 'check-in' && candidate.checkIn && ['verified', 'skipped'].includes(candidate.state));
-    if (!verifiedCheckIn?.checkIn) return undefined;
-  }
   const scheduledFor = new Date(`${parts.date}T${targetWindow.start}:00+05:45`);
   const planned: PlannedAction = {
     id: makeId('action'), date: parts.date, action, scheduleSource: selected.source, targetWindow,
@@ -107,11 +103,28 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
     minDurationMinutes: selected.rule.minDurationMinutes, maxDurationMinutes: selected.rule.maxDurationMinutes,
     state: 'scheduled', createdAt: now.toISOString(), scheduledFor: scheduledFor.toISOString(), expiresAt: scheduledFor.toISOString(),
   };
-  if (action === 'check-in') {
-    const observed = await rigoBrowser.readAttendance(parts.date, `preflight-${action}-${parts.date}`);
+  {
+    let observed: Awaited<ReturnType<typeof rigoBrowser.readAttendance>>;
+    try {
+      observed = await rigoBrowser.readAttendance(parts.date, `preflight-${action}-${parts.date}`);
+    } catch (error) {
+      const warning = error instanceof Error ? error.message : 'RigoHR attendance could not be read.';
+      store.addAction({ ...planned, state: 'failed', warning });
+      log(warning, { runId: planned.id, action, date: parts.date, status: 'failed', errorCategory: 'attendance_preflight', screenshots: rigoBrowser.failureEvidenceFrom(error) });
+      await notify({ ...planned, state: 'failed' }, 'failed', warning);
+      return undefined;
+    }
     if (observed.record) store.upsertAttendance(observed.record);
     log(`Preflight RigoHR check completed before arming automatic ${displayAction(action)}.`, { runId: planned.id, action, status: 'info', date: parts.date, url: observed.url, observedPageState: observed.pageState, observedCheckIn: observed.record?.checkIn, observedCheckOut: observed.record?.checkOut, screenshots: observed.screenshots });
-    if (observed.record?.checkIn) {
+    if (action === 'check-out' && (!observed.record?.checkIn || observed.record.checkOut)) {
+      const warning = observed.record?.checkOut
+        ? `Automatic punch-out skipped: RigoHR already recorded punch-out at ${observed.record.checkOut}.`
+        : 'Automatic punch-out skipped: today has no recorded punch-in.';
+      store.addAction({ ...planned, state: 'skipped', warning });
+      log(warning, { runId: planned.id, action, date: parts.date, status: 'skipped' });
+      return undefined;
+    }
+    if (action === 'check-in' && observed.record?.checkIn) {
       const warning = `Automatic punch-in not armed: RigoHR already recorded punch-in at ${observed.record.checkIn}. No punch-in was submitted.`;
       const skipped = { ...planned, state: 'skipped' as const, warning, checkIn: observed.record.checkIn };
       store.addAction(skipped);

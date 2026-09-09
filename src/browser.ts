@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { evidenceStore } from './evidence.js';
+import { readAttendanceDom } from './attendance-dom.js';
 import type { ActionType, AttendanceRecord } from './types.js';
 
 type Evidence = { label: string; path: string };
@@ -209,7 +210,7 @@ export class RigoBrowser {
   }
 
   private clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
-    return page.locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? 'clock[- ]?in' : 'clock[- ]?out', 'i'), visible: true }).first();
+    return page.locator('header, [role="banner"]').locator('button, a').filter({ hasText: new RegExp(action === 'check-in' ? '^\\s*clock[- ]?in\\b' : '^\\s*clock[- ]?out\\b', 'i'), visible: true });
   }
 
   private clockConfirmationModal(page: Page, action: ActionType): ReturnType<Page['locator']> {
@@ -373,27 +374,9 @@ export class RigoBrowser {
       const dateParts = new Intl.DateTimeFormat('en-US', { timeZone: process.env.RIGOHR_TIMEZONE || 'Asia/Kathmandu', day: 'numeric', weekday: 'short' }).format(new Date(`${date}T00:00:00+05:45`));
       const dayNumber = dateParts.match(/\d+/)?.[0];
       const weekday = dateParts.match(/(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/)?.[1];
-      const row = await page.evaluate(({ dayNumber: targetDay, weekday: targetWeekday }) => {
-        const headingElement = [...document.querySelectorAll('h1, h2, h3')].find((element) => element.textContent?.includes('My Time and Attendance'));
-        const section = headingElement?.parentElement;
-        const rows = section ? [...section.querySelectorAll('[dir="row"]')] : [];
-        const matching = rows.filter((candidate) => {
-          const text = candidate.textContent || '';
-          return Boolean(targetDay && targetWeekday && new RegExp(`\\b${targetDay}\\b`).test(text) && text.includes(targetWeekday));
-        });
-        if (matching.length !== 1) return { rowCount: matching.length };
-        const badges = [...matching[0].querySelectorAll('span')].filter((badge) => badge.querySelector('svg') && badge.querySelector('p'));
-        const values = badges.map((badge) => ({
-          time: badge.querySelector('p')?.textContent?.trim() || '',
-          direction: badge.querySelector('svg')?.getAttribute('class') || '',
-        })).filter((value) => /\d{1,2}:\d{2}\s*[ap]/i.test(value.time));
-        return {
-          rowCount: matching.length,
-          checkIn: values.find((value) => value.direction.includes('arrow-down-left'))?.time,
-          checkOut: values.find((value) => value.direction.includes('arrow-up-right'))?.time,
-        };
-      }, { dayNumber, weekday });
-      if (row.rowCount !== 1) return { pageState: `${heading}; ${row.rowCount === 0 ? 'date-row-not-found' : 'date-row-ambiguous'}`, url: page.url(), screenshots };
+      const row = await page.evaluate(readAttendanceDom, { day: Number(dayNumber), weekday: weekday || '' }).catch(error => {
+        throw new Error(`RigoHR attendance could not be read for ${date}: ${error.message}`);
+      });
       return { record: { date, checkIn: row.checkIn, checkOut: row.checkOut }, pageState: `${heading}; date-row-found`, url: page.url(), screenshots };
     } catch (error) {
       const browserClosed = isBrowserClosedError(error);
