@@ -157,11 +157,13 @@ export class RigoBrowser {
 
   async openHome(): Promise<Page> {
     const page = await this.getPage();
-    // Keep the current authenticated page when it is already inside the
-    // allowed RigoHR app. Re-goto-ing /hr here caused every preflight,
-    // action, and verification phase to visibly reload the VNC browser.
     const current = new URL(page.url());
-    if (current.origin !== APP_ORIGIN || !allowedAppPaths.has(current.pathname)) {
+    if (current.origin === APP_ORIGIN && allowedAppPaths.has(current.pathname)) {
+      // The persistent SPA can stay open for days while its attendance rows
+      // and request state remain from the day it was first loaded.
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await this.settlePage(page);
+    } else {
       await this.safeGoto('https://app.rigohr.com/hr');
     }
     return page;
