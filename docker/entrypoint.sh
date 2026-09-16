@@ -19,6 +19,9 @@ if [ "$(printf '%s' "$vnc_password" | wc -c)" -lt 8 ]; then
 fi
 
 mkdir -p /app/data
+rm -f /app/.browser-profile/SingletonLock \
+  /app/.browser-profile/SingletonSocket \
+  /app/.browser-profile/SingletonCookie
 x11vnc -storepasswd "$vnc_password" "$vnc_password_file" >/dev/null
 chmod 600 "$vnc_password_file"
 
