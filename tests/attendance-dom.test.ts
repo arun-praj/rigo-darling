@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { readAttendanceDom } from '../src/attendance-dom.js';
-import { clockActionControl } from '../src/browser.js';
+import { clockActionControl, loginControl } from '../src/browser.js';
 
 let browser: Browser;
 let page: Page;
@@ -43,4 +43,8 @@ it('finds the redesigned header controls by their accessible names', async () =>
   expect(await checkout.isVisible()).toBe(true);
   expect(await checkout.isEnabled()).toBe(true);
   expect(await clockActionControl(page, 'check-in').count()).toBe(0);
+});
+it('finds the current spaced Log in button', async () => {
+  await page.setContent('<button type="submit">Log in</button>');
+  expect(await loginControl(page).count()).toBe(1);
 });

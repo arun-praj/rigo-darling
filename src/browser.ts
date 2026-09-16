@@ -46,6 +46,10 @@ export function clockActionControl(page: Page, action: ActionType): ReturnType<P
   return header.getByRole('button', { name }).or(header.getByRole('link', { name }));
 }
 
+export function loginControl(page: Page): ReturnType<Page['locator']> {
+  return page.getByRole('button', { name: /^log\s*in$/i });
+}
+
 export function isAllowedRigoUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -327,7 +331,7 @@ export class RigoBrowser {
       await this.settlePage(page);
       await passwordBox.first().fill(password);
       await this.settlePage(page);
-      await page.getByRole('button', { name: /login/i }).click();
+      await loginControl(page).click();
       await this.waitForPostLoginState(page);
       await this.settlePage(page);
       if (!(await this.waitForAttendanceHome(page)) && !(await this.isClockLanding(page))) {
