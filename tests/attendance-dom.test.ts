@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { readAttendanceDom } from '../src/attendance-dom.js';
-import { clockActionControl, loginControl } from '../src/browser.js';
+import { clockActionControl, loginControl, skipToHrControl } from '../src/browser.js';
 
 let browser: Browser;
 let page: Page;
@@ -47,4 +47,8 @@ it('finds the redesigned header controls by their accessible names', async () =>
 it('finds the current spaced Log in button', async () => {
   await page.setContent('<button type="submit">Log in</button>');
   expect(await loginControl(page).count()).toBe(1);
+});
+it('finds the current semantic skip-to-HR link', async () => {
+  await page.setContent('<a href="/hr/employee">Skip Clock In and go to your HR Portal</a>');
+  expect(await skipToHrControl(page).count()).toBe(1);
 });

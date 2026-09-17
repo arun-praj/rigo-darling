@@ -50,6 +50,11 @@ export function loginControl(page: Page): ReturnType<Page['locator']> {
   return page.getByRole('button', { name: /^log\s*in$/i });
 }
 
+export function skipToHrControl(page: Page): ReturnType<Page['locator']> {
+  const name = /^skip\s+clock\s+in\s+and\s+go\s+to\s+your\s+hr\s+portal$/i;
+  return page.getByRole('link', { name }).or(page.getByRole('button', { name }));
+}
+
 export function isAllowedRigoUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -224,7 +229,7 @@ export class RigoBrowser {
   }
 
   private skipToHrControl(page: Page): ReturnType<Page['locator']> {
-    return page.locator('a, button').filter({ hasText: /skip[\s\S]*go to[\s\S]*hr/i, visible: true }).first();
+    return skipToHrControl(page).filter({ visible: true }).first();
   }
 
   private clockActionControl(page: Page, action: ActionType): ReturnType<Page['locator']> {
@@ -348,6 +353,7 @@ export class RigoBrowser {
       if (clockGate) screenshots.push(clockGate);
       await this.settlePage(page);
       await skipToHr.click();
+      await page.waitForURL(/\/hr\/employee(?:$|[?#])/, { waitUntil: 'domcontentloaded', timeout: PAGE_STATE_TIMEOUT_MS }).catch(() => undefined);
       await this.waitForPostLoginState(page);
       await this.settleAfterClick(page);
       if (!(await this.waitForAttendanceHome(page))) {
@@ -442,6 +448,7 @@ export class RigoBrowser {
       const skipToHr = this.skipToHrControl(page);
       if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
         await skipToHr.click();
+        await page.waitForURL(/\/hr\/employee(?:$|[?#])/, { waitUntil: 'domcontentloaded', timeout: PAGE_STATE_TIMEOUT_MS }).catch(() => undefined);
         await this.settleAfterClick(page);
       }
       if (!(await this.waitForAttendanceHome(page))) {
