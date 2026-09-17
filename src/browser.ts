@@ -52,7 +52,7 @@ export function loginControl(page: Page): ReturnType<Page['locator']> {
 
 export function skipToHrControl(page: Page): ReturnType<Page['locator']> {
   const name = /^skip\s+clock\s+in\s+and\s+go\s+to\s+your\s+hr\s+portal$/i;
-  return page.getByRole('link', { name }).or(page.getByRole('button', { name }));
+  return page.locator('a').filter({ hasText: name }).or(page.getByRole('button', { name }));
 }
 
 export function isAllowedRigoUrl(value: string): boolean {

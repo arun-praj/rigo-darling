@@ -52,3 +52,7 @@ it('finds the current semantic skip-to-HR link', async () => {
   await page.setContent('<a href="/hr/employee">Skip Clock In and go to your HR Portal</a>');
   expect(await skipToHrControl(page).count()).toBe(1);
 });
+it('finds the current click-handler anchor without an href', async () => {
+  await page.setContent('<a class="chakra-link">Skip Clock In and go to your HR Portal</a>');
+  expect(await skipToHrControl(page).count()).toBe(1);
+});
