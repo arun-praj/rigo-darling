@@ -64,17 +64,22 @@ function statusLabel(state: NotificationContext['state']): string {
   return state === 'scheduled' ? 'SCHEDULED' : state === 'verified' ? 'SUCCESS' : state === 'blocked' ? 'BLOCKED' : state === 'skipped' ? 'SKIPPED' : 'FAILED';
 }
 
+function resultLabel(context: NotificationContext): string {
+  return context.errorCategory === 'attendance_preflight' ? 'PREFLIGHT FAILED — PUNCH NOT SUBMITTED' : statusLabel(context.state);
+}
+
 export function buildNotification(context: NotificationContext): { subject: string; text: string; html: string } {
   const actionLabel = context.action === 'check-in' ? 'Punch-in' : 'Punch-out';
+  const result = resultLabel(context);
   const observedIn = context.record?.checkIn || 'Not observed';
   const observedOut = context.record?.checkOut || 'Not observed';
   const rigoUrl = configuredUrl('RIGOHR_URL', 'https://app.rigohr.com/hr');
   const projectUrl = configuredUrl('PROJECT_URL', 'http://localhost:4317');
-  const subject = `[RigoHR] ${statusLabel(context.state)}: ${actionLabel} · ${context.date}`;
+  const subject = `[RigoHR] ${result}: ${actionLabel} · ${context.date}`;
   const fields = [
     `RigoHR website: ${rigoUrl}`,
     `Attendance project: ${projectUrl}`,
-    `Result: ${statusLabel(context.state)}`,
+    `Result: ${result}`,
     `Action: ${actionLabel}`,
     `Date: ${context.date}`,
     `Schedule: ${context.scheduleSource}`,
@@ -91,7 +96,7 @@ export function buildNotification(context: NotificationContext): { subject: stri
     context.screenshotPaths?.length ? `Evidence: ${context.screenshotPaths.join(', ')}` : '',
   ].filter(Boolean);
   const text = `RigoHR Attendance Notification\n\n${fields.join('\n')}`;
-  const html = `<h2>RigoHR Attendance · ${escapeHtml(statusLabel(context.state))}</h2><table>${fields.map((field) => { const separator = field.indexOf(':'); const key = separator > -1 ? field.slice(0, separator) : 'Details'; const value = separator > -1 ? field.slice(separator + 1).trim() : field; const content = key === 'RigoHR website' || key === 'Attendance project' ? `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>` : escapeHtml(value); return `<tr><th style="text-align:left;padding:5px 12px 5px 0">${escapeHtml(key)}</th><td style="padding:5px 0">${content}</td></tr>`; }).join('')}</table>`;
+  const html = `<h2>RigoHR Attendance · ${escapeHtml(result)}</h2><table>${fields.map((field) => { const separator = field.indexOf(':'); const key = separator > -1 ? field.slice(0, separator) : 'Details'; const value = separator > -1 ? field.slice(separator + 1).trim() : field; const content = key === 'RigoHR website' || key === 'Attendance project' ? `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>` : escapeHtml(value); return `<tr><th style="text-align:left;padding:5px 12px 5px 0">${escapeHtml(key)}</th><td style="padding:5px 0">${content}</td></tr>`; }).join('')}</table>`;
   return { subject, text, html };
 }
 

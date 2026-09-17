@@ -27,6 +27,13 @@ describe('attendance email notifications', () => {
     expect(message.text).toContain('no punch-in was submitted');
   });
 
+  it('labels attendance preflight failures without implying a punch was attempted', () => {
+    const message = buildNotification({ action: 'check-in', state: 'failed', date: '2026-08-13', scheduleSource: 'weekly thursday', targetWindow: { start: '12:30', end: '13:45' }, checkInWindow: { start: '12:30', end: '13:45' }, checkOutWindow: { start: '22:00', end: '23:00' }, minDurationMinutes: 540, maxDurationMinutes: 600, message: 'RigoHR did not reach the attendance home.', errorCategory: 'attendance_preflight', observedPageState: 'Preflight failed; punch not submitted.' });
+    expect(message.subject).toContain('PREFLIGHT FAILED — PUNCH NOT SUBMITTED');
+    expect(message.text).toContain('Result: PREFLIGHT FAILED — PUNCH NOT SUBMITTED');
+    expect(message.text).toContain('Error category: attendance_preflight');
+  });
+
   it('escapes error content in HTML', () => {
     const message = buildNotification({ action: 'check-out', state: 'failed', date: '2026-08-13', scheduleSource: 'weekly thursday', targetWindow: { start: '22:00', end: '23:00' }, checkInWindow: { start: '12:30', end: '13:45' }, checkOutWindow: { start: '22:00', end: '23:00' }, minDurationMinutes: 540, maxDurationMinutes: 600, message: '<password=secret>' });
     expect(message.html).not.toContain('<password=secret>');

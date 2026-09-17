@@ -111,7 +111,7 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
       const warning = error instanceof Error ? error.message : 'RigoHR attendance could not be read.';
       store.addAction({ ...planned, state: 'failed', warning });
       log(warning, { runId: planned.id, action, date: parts.date, status: 'failed', errorCategory: 'attendance_preflight', screenshots: rigoBrowser.failureEvidenceFrom(error) });
-      await notify({ ...planned, state: 'failed' }, 'failed', warning);
+      await notify({ ...planned, state: 'failed' }, 'failed', warning, { errorCategory: 'attendance_preflight', observedPageState: 'Preflight failed; punch not submitted.' });
       return undefined;
     }
     if (observed.record) store.upsertAttendance(observed.record);
