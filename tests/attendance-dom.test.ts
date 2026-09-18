@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { readAttendanceDom } from '../src/attendance-dom.js';
-import { clockActionControl, loginControl, skipToHrControl } from '../src/browser.js';
+import { clockActionControl, leaveClockGate, loginControl, skipToHrControl } from '../src/browser.js';
 
 let browser: Browser;
 let page: Page;
@@ -55,4 +55,11 @@ it('finds the current semantic skip-to-HR link', async () => {
 it('finds the current click-handler anchor without an href', async () => {
   await page.setContent('<a class="chakra-link">Skip Clock In and go to your HR Portal</a>');
   expect(await skipToHrControl(page).count()).toBe(1);
+});
+it('retries the inert clock-gate anchor after delayed SPA hydration', async () => {
+  await page.setContent('<a class="chakra-link">Skip Clock In and go to your HR Portal</a>');
+  await page.evaluate(() => {
+    setTimeout(() => document.querySelector('a')?.addEventListener('click', () => { window.location.hash = '/hr/employee'; }), 1_500);
+  });
+  expect(await leaveClockGate(page)).toBe(true);
 });

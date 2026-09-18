@@ -17,6 +17,8 @@ const PAGE_SETTLE_MAX_MS = 2_000;
 const PAGE_STATE_TIMEOUT_MS = 20_000;
 const PAGE_STATE_POLL_MS = 250;
 const POST_CLICK_DELAY_MS = 750;
+const CLOCK_GATE_ATTEMPTS = 3;
+const CLOCK_GATE_NAVIGATION_TIMEOUT_MS = 4_000;
 
 function pageSettleDelayMs(): number {
   return PAGE_SETTLE_MIN_MS + Math.floor(Math.random() * (PAGE_SETTLE_MAX_MS - PAGE_SETTLE_MIN_MS + 1));
@@ -53,6 +55,22 @@ export function loginControl(page: Page): ReturnType<Page['locator']> {
 export function skipToHrControl(page: Page): ReturnType<Page['locator']> {
   const name = /^skip\s+clock\s+in\s+and\s+go\s+to\s+your\s+hr\s+portal$/i;
   return page.locator('a').filter({ hasText: name }).or(page.getByRole('button', { name }));
+}
+
+export async function leaveClockGate(page: Page): Promise<boolean> {
+  for (let attempt = 0; attempt < CLOCK_GATE_ATTEMPTS; attempt += 1) {
+    await page.waitForLoadState('networkidle', { timeout: CLOCK_GATE_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
+    const control = skipToHrControl(page).filter({ visible: true }).first();
+    if (await control.count() === 0 || !(await control.isVisible().catch(() => false))) break;
+    await control.click();
+    const navigated = await page.waitForURL(/\/hr\/employee(?:$|[?#])/, {
+      waitUntil: 'domcontentloaded',
+      timeout: CLOCK_GATE_NAVIGATION_TIMEOUT_MS,
+    }).then(() => true).catch(() => false);
+    if (navigated) return true;
+  }
+  await page.goto(`${APP_ORIGIN}/hr/employee`, { waitUntil: 'domcontentloaded' });
+  return new URL(page.url()).pathname === '/hr/employee';
 }
 
 export function isAllowedRigoUrl(value: string): boolean {
@@ -352,11 +370,10 @@ export class RigoBrowser {
       const clockGate = await this.capture(`${evidenceLabel}-03-clock-landing-before-skip`);
       if (clockGate) screenshots.push(clockGate);
       await this.settlePage(page);
-      await skipToHr.click();
-      await page.waitForURL(/\/hr\/employee(?:$|[?#])/, { waitUntil: 'domcontentloaded', timeout: PAGE_STATE_TIMEOUT_MS }).catch(() => undefined);
+      const leftClockGate = await leaveClockGate(page);
       await this.waitForPostLoginState(page);
       await this.settleAfterClick(page);
-      if (!(await this.waitForAttendanceHome(page))) {
+      if (!leftClockGate || !(await this.waitForAttendanceHome(page))) {
         throw new Error(`RigoHR did not reach the attendance home after skipping the clock gate: ${new URL(page.url()).pathname}`);
       }
       const afterSkip = await this.capture(`${evidenceLabel}-04-after-skip-to-hr`);
@@ -447,8 +464,9 @@ export class RigoBrowser {
       await this.settlePage(page);
       const skipToHr = this.skipToHrControl(page);
       if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
-        await skipToHr.click();
-        await page.waitForURL(/\/hr\/employee(?:$|[?#])/, { waitUntil: 'domcontentloaded', timeout: PAGE_STATE_TIMEOUT_MS }).catch(() => undefined);
+        if (!(await leaveClockGate(page))) {
+          throw new Error(`RigoHR did not leave the clock gate after ${action}: ${new URL(page.url()).pathname}`);
+        }
         await this.settleAfterClick(page);
       }
       if (!(await this.waitForAttendanceHome(page))) {
