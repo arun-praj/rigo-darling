@@ -21,14 +21,16 @@ it('arms checkout from live attendance despite an earlier failed punch-in', asyn
   expect(plans.map(p => p.action)).toEqual(['check-out']);
   expect(mocks.save).toHaveBeenCalledWith({ date: '2026-09-09', checkIn: '9:59a' });
 });
-it('stops an unreadable preflight without overwriting attendance or retrying', async () => {
+it('retries an unreadable preflight after a one-minute cooldown', async () => {
   mocks.read.mockRejectedValue(new Error('date-row-not-found'));
   const now = new Date('2026-09-09T12:50:00+05:45');
   expect(await evaluate(now)).toEqual([]);
   expect(await evaluate(now)).toEqual([]);
   expect(mocks.read).toHaveBeenCalledTimes(1);
   expect(mocks.save).not.toHaveBeenCalled();
-  expect(mocks.actions[0].state).toBe('failed');
+  expect(mocks.actions[0].state).toBe('preflight_failed');
+  expect(await evaluate(new Date('2026-09-09T12:51:01+05:45'))).toEqual([]);
+  expect(mocks.read).toHaveBeenCalledTimes(2);
 });
 it('skips an already recorded punch-in', async () => {
   mocks.read.mockResolvedValue({ record: { date: '2026-09-09', checkIn: '9:59a' }, screenshots: [] });

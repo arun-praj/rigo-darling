@@ -7,9 +7,15 @@ import type { ActionType, AttendanceRecord, LogEntry, PlannedAction } from './ty
 
 const timezone = () => store.config.timezone;
 const AUTO_LEAD_MINUTES = 15;
+const PREFLIGHT_RETRY_COOLDOWN_MS = 60_000;
 const SCHEDULER_INTERVAL_MS = 15_000;
 const SCHEDULER_STALE_AFTER_MS = SCHEDULER_INTERVAL_MS * 3;
 const displayAction = (action: ActionType): string => action === 'check-in' ? 'Punch-in' : 'Punch-out';
+
+function preflightRetryPending(date: string, action: ActionType, now: Date): boolean {
+  const failure = store.actions.find((candidate) => candidate.date === date && candidate.action === action && candidate.state === 'preflight_failed');
+  return Boolean(failure && now.getTime() - new Date(failure.createdAt).getTime() < PREFLIGHT_RETRY_COOLDOWN_MS);
+}
 
 export interface PunchReconciliation {
   verified: boolean;
@@ -94,6 +100,7 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
   const punchWindowOpen = inWindow(parts.time, targetWindow);
   const manualTargetReached = manualOverride && minutes(parts.time) >= minutes(targetWindow.start);
   if (!inPreparationWindow && !punchWindowOpen && !manualTargetReached) return undefined;
+  if (preflightRetryPending(parts.date, action, now)) return undefined;
   const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return undefined;
   const scheduledFor = new Date(`${parts.date}T${targetWindow.start}:00+05:45`);
@@ -109,7 +116,7 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
       observed = await rigoBrowser.readAttendance(parts.date, `preflight-${action}-${parts.date}`);
     } catch (error) {
       const warning = error instanceof Error ? error.message : 'RigoHR attendance could not be read.';
-      store.addAction({ ...planned, state: 'failed', warning });
+      store.addAction({ ...planned, state: 'preflight_failed', warning });
       log(warning, { runId: planned.id, action, date: parts.date, status: 'failed', errorCategory: 'attendance_preflight', screenshots: rigoBrowser.failureEvidenceFrom(error) });
       await notify({ ...planned, state: 'failed' }, 'failed', warning, { errorCategory: 'attendance_preflight', observedPageState: 'Preflight failed; punch not submitted.' });
       return undefined;
@@ -160,6 +167,7 @@ function eligibilityReason(action: ActionType, now: Date): string {
     ? { start: randomized.checkIn, end: scheduledOverride['check-in'] ? randomized.checkIn : selected.rule.checkInWindow.end }
     : { start: randomized.checkOut, end: scheduledOverride['check-out'] ? randomized.checkOut : selected.rule.checkOutWindow.end };
   if (!isWithinLeadWindow(parts.time, targetWindow.start, AUTO_LEAD_MINUTES) && !inWindow(parts.time, targetWindow)) return `${displayAction(action)}: current time ${parts.time} is outside the 15-minute preparation window before ${targetWindow.start}.`;
+  if (preflightRetryPending(parts.date, action, now)) return `${displayAction(action)}: attendance preflight will retry after its one-minute cooldown.`;
   const existing = store.actions.find((candidate) => candidate.date === parts.date && candidate.action === action && ['scheduled', 'waiting_confirmation', 'clicked', 'verified', 'skipped', 'failed'].includes(candidate.state));
   if (existing) return `${displayAction(action)}: an action is already ${existing.state} for today.`;
   return `${displayAction(action)}: eligible for automatic scheduling; punch is planned for ${targetWindow.start}.`;

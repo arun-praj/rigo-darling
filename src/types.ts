@@ -11,6 +11,7 @@ export type RunState =
   | 'clicked'
   | 'verified'
   | 'failed'
+  | 'preflight_failed'
   | 'auth_required';
 
 export interface ScheduleRule {
