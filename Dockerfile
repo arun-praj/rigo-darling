@@ -25,7 +25,7 @@ RUN apt-get update \
 ENV NODE_ENV=production \
     BROWSER_HEADLESS=false \
     DISPLAY=:99 \
-    RIGOHR_DB_PATH=/app/data/rigohr.sqlite \
+    SUSHI_DB_PATH=/app/data/rigohr.sqlite \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
 

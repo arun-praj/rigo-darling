@@ -4,7 +4,7 @@ import { makeId, store } from './store.js';
 import { hashPassword, verifyPassword } from './password.js';
 import type { AuthUser, UserRole } from './types.js';
 
-export const SESSION_COOKIE = 'rigohr_session';
+export const SESSION_COOKIE = 'sushi_session';
 export const SESSION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 function tokenHash(token: string): string {

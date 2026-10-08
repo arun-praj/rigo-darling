@@ -18,7 +18,7 @@ export function notificationRecipientsFromEnv(): string[] {
 }
 
 export const defaultConfig = (): Config => ({
-  timezone: process.env.RIGOHR_TIMEZONE || 'Asia/Kathmandu',
+  timezone: process.env.SUSHI_TIMEZONE || 'Asia/Kathmandu',
   weekly: DAYS.map((day) => rule(day, ['wednesday', 'thursday'].includes(day) ? 'Evening' : 'Morning')),
   overrides: [],
   notificationEmails: notificationRecipientsFromEnv(),

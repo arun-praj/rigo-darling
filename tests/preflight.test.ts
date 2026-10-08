@@ -10,7 +10,7 @@ vi.mock('../src/store.js', () => ({ makeId: () => 'test-action', store: {
   scheduleTimeOverrides: { '2026-09-09': { 'check-in': '13:00', 'check-out': '22:15' } },
   upsertAttendance: mocks.save, addAction: (action: PlannedAction) => mocks.actions.push(action), addLog: vi.fn(),
 } }));
-vi.mock('../src/browser.js', () => ({ isUncertainPunchError: () => false, rigoBrowser: { readAttendance: mocks.read, failureEvidenceFrom: () => [] } }));
+vi.mock('../src/browser.js', () => ({ isUncertainPunchError: () => false, sushiBrowser: { readAttendance: mocks.read, failureEvidenceFrom: () => [] } }));
 vi.mock('../src/mailer.js', () => ({ plannedActionContext: () => ({}), sendNotification: async () => ({ sent: false }) }));
 import { evaluate } from '../src/automation.js';
 beforeEach(() => { mocks.actions.length = 0; mocks.config = defaultConfig(); mocks.read.mockReset(); mocks.save.mockReset(); });

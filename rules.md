@@ -1,4 +1,4 @@
-# RigoHR scheduling rules
+# Sushi scheduling rules
 
 These are hard product rules. Any future UI, API, scheduler, randomizer, override, or automation change must preserve them.
 

@@ -1,4 +1,4 @@
-import { isUncertainPunchError, rigoBrowser } from './browser.js';
+import { isUncertainPunchError, sushiBrowser } from './browser.js';
 import { defaultConfig } from './config.js';
 import { localParts, ruleForDate, inWindow, isWithinLeadWindow, minutes, durationMinutes, addMinutesToTime, validatePlannedPunchTimes, validateRule, getRandomPunchTimes } from './schedule.js';
 import { makeId, store } from './store.js';
@@ -111,28 +111,28 @@ async function planFor(action: ActionType, now: Date): Promise<PlannedAction | u
     state: 'scheduled', createdAt: now.toISOString(), scheduledFor: scheduledFor.toISOString(), expiresAt: scheduledFor.toISOString(),
   };
   {
-    let observed: Awaited<ReturnType<typeof rigoBrowser.readAttendance>>;
+    let observed: Awaited<ReturnType<typeof sushiBrowser.readAttendance>>;
     try {
-      observed = await rigoBrowser.readAttendance(parts.date, `preflight-${action}-${parts.date}`);
+      observed = await sushiBrowser.readAttendance(parts.date, `preflight-${action}-${parts.date}`);
     } catch (error) {
-      const warning = error instanceof Error ? error.message : 'RigoHR attendance could not be read.';
+      const warning = error instanceof Error ? error.message : 'Sushi attendance could not be read.';
       store.addAction({ ...planned, state: 'preflight_failed', warning });
-      log(warning, { runId: planned.id, action, date: parts.date, status: 'failed', errorCategory: 'attendance_preflight', screenshots: rigoBrowser.failureEvidenceFrom(error) });
+      log(warning, { runId: planned.id, action, date: parts.date, status: 'failed', errorCategory: 'attendance_preflight', screenshots: sushiBrowser.failureEvidenceFrom(error) });
       await notify({ ...planned, state: 'failed' }, 'failed', warning, { errorCategory: 'attendance_preflight', observedPageState: 'Preflight failed; punch not submitted.' });
       return undefined;
     }
     if (observed.record) store.upsertAttendance(observed.record);
-    log(`Preflight RigoHR check completed before arming automatic ${displayAction(action)}.`, { runId: planned.id, action, status: 'info', date: parts.date, url: observed.url, observedPageState: observed.pageState, observedCheckIn: observed.record?.checkIn, observedCheckOut: observed.record?.checkOut, screenshots: observed.screenshots });
+    log(`Preflight Sushi check completed before arming automatic ${displayAction(action)}.`, { runId: planned.id, action, status: 'info', date: parts.date, url: observed.url, observedPageState: observed.pageState, observedCheckIn: observed.record?.checkIn, observedCheckOut: observed.record?.checkOut, screenshots: observed.screenshots });
     if (action === 'check-out' && (!observed.record?.checkIn || observed.record.checkOut)) {
       const warning = observed.record?.checkOut
-        ? `Automatic punch-out skipped: RigoHR already recorded punch-out at ${observed.record.checkOut}.`
+        ? `Automatic punch-out skipped: Sushi already recorded punch-out at ${observed.record.checkOut}.`
         : 'Automatic punch-out skipped: today has no recorded punch-in.';
       store.addAction({ ...planned, state: 'skipped', warning });
       log(warning, { runId: planned.id, action, date: parts.date, status: 'skipped' });
       return undefined;
     }
     if (action === 'check-in' && observed.record?.checkIn) {
-      const warning = `Automatic punch-in not armed: RigoHR already recorded punch-in at ${observed.record.checkIn}. No punch-in was submitted.`;
+      const warning = `Automatic punch-in not armed: Sushi already recorded punch-in at ${observed.record.checkIn}. No punch-in was submitted.`;
       const skipped = { ...planned, state: 'skipped' as const, warning, checkIn: observed.record.checkIn };
       store.addAction(skipped);
       log(warning, { runId: planned.id, action, status: 'skipped', date: parts.date, observedCheckIn: observed.record.checkIn, observedCheckOut: observed.record.checkOut, verificationResult: 'duplicate-punch-in-detected' });
@@ -191,10 +191,10 @@ export async function manualRequest(action: ActionType, now = new Date()): Promi
 
 export function hardPunchDecision(action: ActionType, record: AttendanceRecord | undefined): { state: 'eligible' | 'skipped' | 'blocked'; message?: string } {
   if (action === 'check-in' && record?.checkIn) {
-    return { state: 'skipped', message: `Hard punch-in skipped: RigoHR already recorded punch-in at ${record.checkIn}; no punch-in was submitted.` };
+    return { state: 'skipped', message: `Hard punch-in skipped: Sushi already recorded punch-in at ${record.checkIn}; no punch-in was submitted.` };
   }
   if (action === 'check-out') {
-    if (!record?.checkIn) return { state: 'blocked', message: 'Hard punch-out blocked because RigoHR has no recorded punch-in for today.' };
+    if (!record?.checkIn) return { state: 'blocked', message: 'Hard punch-out blocked because Sushi has no recorded punch-in for today.' };
   }
   return { state: 'eligible' };
 }
@@ -226,10 +226,10 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
     scheduledFor: now.toISOString(),
     expiresAt: now.toISOString(),
   };
-  let before: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+  let before: Awaited<ReturnType<typeof sushiBrowser.readAttendance>> | undefined;
   let punchAttempted = false;
   try {
-    before = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-before`);
+    before = await sushiBrowser.readAttendance(parts.date, `${actionId}-hard-before`);
     if (before.record) store.upsertAttendance(before.record);
     log(`Hard ${displayAction(action).toLowerCase()} preflight completed; schedule window is ignored.`, { runId: actionId, action, date: parts.date, status: 'info', scheduleSource, url: before.url, observedPageState: before.pageState, observedCheckIn: before.record?.checkIn, observedCheckOut: before.record?.checkOut, screenshots: before.screenshots });
     const decision = hardPunchDecision(action, before.record);
@@ -245,9 +245,9 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
     log(`Hard ${displayAction(action).toLowerCase()} requested now; the configured schedule window was ignored.`, { runId: actionId, action, date: parts.date, status: 'scheduled', scheduleSource, scheduledFor: now.toISOString() });
     if (!store.claimScheduledAction(actionId)) throw new Error('Hard punch action could not be claimed; no punch was submitted.');
     punchAttempted = true;
-    const clickScreenshots = await rigoBrowser.clickPunch(action, `${actionId}-hard-now`);
+    const clickScreenshots = await sushiBrowser.clickPunch(action, `${actionId}-hard-now`);
     log(`Clicked hard ${displayAction(action).toLowerCase()} now, refreshed the home page, and will verify the dashboard attendance record.`, { runId: actionId, action, date: parts.date, status: 'clicked', scheduleSource, executionAt: new Date().toISOString(), screenshots: clickScreenshots });
-    const verified = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-after`);
+    const verified = await sushiBrowser.readAttendance(parts.date, `${actionId}-hard-after`);
     if (verified.record) store.upsertAttendance(verified.record);
     const verifiedValue = action === 'check-in' ? verified.record?.checkIn : verified.record?.checkOut;
     if (!verifiedValue) throw new Error(`Hard post-action verification failed: no ${displayAction(action).toLowerCase()} value was visible for ${parts.date}.`);
@@ -258,10 +258,10 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
     return { ...planned, state: 'verified', checkIn: verified.record?.checkIn };
   } catch (error) {
     if (punchAttempted && isUncertainPunchError(error)) {
-      let reconciled: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+      let reconciled: Awaited<ReturnType<typeof sushiBrowser.readAttendance>> | undefined;
       let reconciliationError: string | undefined;
       try {
-        reconciled = await rigoBrowser.readAttendance(parts.date, `${actionId}-hard-reconcile`);
+        reconciled = await sushiBrowser.readAttendance(parts.date, `${actionId}-hard-reconcile`);
         if (reconciled.record) store.upsertAttendance(reconciled.record);
       } catch (errorDuringReconciliation) {
         reconciliationError = errorDuringReconciliation instanceof Error ? errorDuringReconciliation.message : 'Attendance reconciliation failed.';
@@ -275,7 +275,7 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
         await notify({ ...planned, state: 'verified' }, 'verified', message, { record: reconciled?.record, currentUrl: reconciled?.url, observedPageState: reconciled?.pageState, screenshotPaths: screenshots.map((s) => s.path) });
         return { ...planned, state: 'verified', checkIn: reconciled?.record?.checkIn };
       }
-      const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+      const failureScreenshots = sushiBrowser.failureEvidenceFrom(error);
       const screenshotPath = failureScreenshots[0]?.path || undefined;
       store.updateAction(actionId, { state: 'failed', warning: message });
       log(message, { runId: actionId, action, date: parts.date, status: 'failed', scheduleSource, screenshotPath, screenshots: [...screenshots, ...failureScreenshots], errorCategory: 'uncertain_punch' });
@@ -283,8 +283,8 @@ export async function hardPunchNow(action: ActionType, now = new Date()): Promis
       throw new Error(message);
     }
     const message = error instanceof Error ? error.message : 'Unknown hard punch error.';
-    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
-    const screenshotPath = failureScreenshots[0]?.path || (await rigoBrowser.evidence(`${actionId}-hard-${action}.png`).catch(() => '')) || undefined;
+    const failureScreenshots = sushiBrowser.failureEvidenceFrom(error);
+    const screenshotPath = failureScreenshots[0]?.path || (await sushiBrowser.evidence(`${actionId}-hard-${action}.png`).catch(() => '')) || undefined;
     store.updateAction(actionId, { state: 'failed', warning: message });
     log(message, { runId: actionId, action, date: parts.date, status: 'failed', scheduleSource, screenshotPath, screenshots: failureScreenshots.length ? failureScreenshots : undefined, errorCategory: 'hard_punch' });
     await notify({ ...planned, state: 'failed' }, 'failed', message, { record: before?.record, currentUrl: before?.url, observedPageState: before?.pageState, screenshotPaths: [...(before?.screenshots || []), ...failureScreenshots].map((s) => s.path) });
@@ -351,15 +351,15 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
     throw new Error(message);
   }
 
-  let observed: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+  let observed: Awaited<ReturnType<typeof sushiBrowser.readAttendance>> | undefined;
   let punchAttempted = false;
   try {
-    observed = await rigoBrowser.readAttendance(action.date, `${id}-before-action`);
+    observed = await sushiBrowser.readAttendance(action.date, `${id}-before-action`);
     if (observed.record) store.upsertAttendance(observed.record);
     store.updateAction(id, { checkIn: observed.record?.checkIn });
-    log(`Pre-action RigoHR check completed before ${displayAction(action.action)}.`, { runId: id, action: action.action, status: 'info', date: action.date, url: observed.url, observedPageState: observed.pageState, observedCheckIn: observed.record?.checkIn, observedCheckOut: observed.record?.checkOut, screenshots: observed.screenshots });
+    log(`Pre-action Sushi check completed before ${displayAction(action.action)}.`, { runId: id, action: action.action, status: 'info', date: action.date, url: observed.url, observedPageState: observed.pageState, observedCheckIn: observed.record?.checkIn, observedCheckOut: observed.record?.checkOut, screenshots: observed.screenshots });
     if (action.action === 'check-in' && observed.record?.checkIn) {
-      const warning = `Automatic punch-in skipped: RigoHR already recorded punch-in at ${observed.record.checkIn}; no punch-in was submitted.`;
+      const warning = `Automatic punch-in skipped: Sushi already recorded punch-in at ${observed.record.checkIn}; no punch-in was submitted.`;
       store.updateAction(id, { state: 'skipped', warning, checkIn: observed.record.checkIn });
       log(warning, { runId: id, action: action.action, status: 'skipped', date: action.date, observedCheckIn: observed.record.checkIn, observedCheckOut: observed.record.checkOut, verificationResult: 'duplicate-punch-in-detected' });
       await notify(action, 'skipped', warning, { record: observed.record, currentUrl: observed.url, observedPageState: observed.pageState, screenshotPaths: observed.screenshots.map((s) => s.path) });
@@ -397,10 +397,10 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
       throw new Error('Scheduled action was claimed or changed by another process; no punch was submitted.');
     }
     punchAttempted = true;
-    const clickScreenshots = await rigoBrowser.clickPunch(action.action, `${id}-${action.action}`);
+    const clickScreenshots = await sushiBrowser.clickPunch(action.action, `${id}-${action.action}`);
     log(`Clicked ${displayAction(action.action)} automatically, refreshed the home page, and will verify the dashboard attendance record.`, { runId: id, action: action.action, status: 'clicked', date: action.date, scheduledFor: action.scheduledFor, executionAt: now.toISOString(), screenshots: clickScreenshots });
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const verified = await rigoBrowser.readAttendance(action.date, `${id}-after-action`);
+    const verified = await sushiBrowser.readAttendance(action.date, `${id}-after-action`);
     if (verified.record) store.upsertAttendance(verified.record);
     const verifiedValue = action.action === 'check-in' ? verified.record?.checkIn : verified.record?.checkOut;
     if (!verifiedValue) throw new Error(`Post-action verification failed: no ${action.action} value was visible for ${action.date}.`);
@@ -410,10 +410,10 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
     return { ...action, state: 'verified', checkIn: verified.record?.checkIn };
   } catch (error) {
     if (punchAttempted && isUncertainPunchError(error)) {
-      let reconciled: Awaited<ReturnType<typeof rigoBrowser.readAttendance>> | undefined;
+      let reconciled: Awaited<ReturnType<typeof sushiBrowser.readAttendance>> | undefined;
       let reconciliationError: string | undefined;
       try {
-        reconciled = await rigoBrowser.readAttendance(action.date, `${id}-reconcile`);
+        reconciled = await sushiBrowser.readAttendance(action.date, `${id}-reconcile`);
         if (reconciled.record) store.upsertAttendance(reconciled.record);
       } catch (errorDuringReconciliation) {
         reconciliationError = errorDuringReconciliation instanceof Error ? errorDuringReconciliation.message : 'Attendance reconciliation failed.';
@@ -427,7 +427,7 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
         await notify({ ...action, state: 'verified' }, 'verified', message, { record: reconciled?.record, currentUrl: reconciled?.url, observedPageState: reconciled?.pageState, screenshotPaths: screenshots.map((s) => s.path) });
         return { ...action, state: 'verified', checkIn: reconciled?.record?.checkIn };
       }
-      const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+      const failureScreenshots = sushiBrowser.failureEvidenceFrom(error);
       const screenshotPath = failureScreenshots[0]?.path || undefined;
       store.updateAction(id, { state: 'failed', warning: message });
       log(message, { runId: id, action: action.action, status: 'failed', date: action.date, screenshotPath, screenshots: [...screenshots, ...failureScreenshots], errorCategory: 'uncertain_punch' });
@@ -435,8 +435,8 @@ async function executeActionInternal(id: string): Promise<PlannedAction> {
       throw new Error(message);
     }
     const message = error instanceof Error ? error.message : 'Unknown automation error.';
-    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
-    const screenshotPath = failureScreenshots[0]?.path || (await rigoBrowser.evidence(`${id}-${action.action}.png`).catch(() => '')) || undefined;
+    const failureScreenshots = sushiBrowser.failureEvidenceFrom(error);
+    const screenshotPath = failureScreenshots[0]?.path || (await sushiBrowser.evidence(`${id}-${action.action}.png`).catch(() => '')) || undefined;
     store.updateAction(id, { state: 'failed', warning: message });
     log(message, { runId: id, action: action.action, status: 'failed', date: action.date, screenshotPath, screenshots: failureScreenshots.length ? failureScreenshots : undefined, errorCategory: 'automation' });
     await notify(action, 'failed', message, { record: observed?.record, currentUrl: observed?.url, observedPageState: observed?.pageState, screenshotPaths: [...(observed?.screenshots.map((s) => s.path) || []), ...failureScreenshots.map((s) => s.path)] });
@@ -501,7 +501,7 @@ async function schedulerTick(): Promise<void> {
     }
   } catch (error) {
     schedulerLastError = true;
-    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
+    const failureScreenshots = sushiBrowser.failureEvidenceFrom(error);
     log(error instanceof Error ? error.message : 'Scheduler error.', { status: 'failed', errorCategory: 'scheduler', screenshotPath: failureScreenshots[0]?.path, screenshots: failureScreenshots.length ? failureScreenshots : undefined });
   } finally {
     schedulerTickInProgress = false;

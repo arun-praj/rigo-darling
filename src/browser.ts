@@ -73,7 +73,7 @@ export async function leaveClockGate(page: Page): Promise<boolean> {
   return new URL(page.url()).pathname === '/hr/employee';
 }
 
-export function isAllowedRigoUrl(value: string): boolean {
+export function isAllowedSushiUrl(value: string): boolean {
   try {
     const url = new URL(value);
     if (url.origin === LOGIN_ORIGIN) return true;
@@ -81,7 +81,7 @@ export function isAllowedRigoUrl(value: string): boolean {
   } catch { return false; }
 }
 
-export class RigoBrowser {
+export class SushiBrowser {
   private context?: BrowserContext;
   private page?: Page;
   private navigationGuardAttached = false;
@@ -147,7 +147,7 @@ export class RigoBrowser {
       try { this.context.pages(); } catch { await this.close(); }
     }
     if (!this.context) {
-      const profile = path.resolve(process.env.RIGOHR_BROWSER_PROFILE || '.browser-profile');
+      const profile = path.resolve(process.env.SUSHI_BROWSER_PROFILE || '.browser-profile');
       fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
       this.context = await chromium.launchPersistentContext(profile, {
         headless: process.env.BROWSER_HEADLESS === 'true',
@@ -166,9 +166,9 @@ export class RigoBrowser {
       });
       context.on('page', (popup) => void popup.close().catch(() => undefined));
       const page = this.page;
-      if (!page) throw new Error('RigoHR browser page could not be initialized.');
+      if (!page) throw new Error('Sushi browser page could not be initialized.');
       page.on('framenavigated', (frame) => {
-        if (frame === page.mainFrame() && !isAllowedRigoUrl(frame.url())) {
+        if (frame === page.mainFrame() && !isAllowedSushiUrl(frame.url())) {
           void page.goBack().catch(() => undefined);
         }
       });
@@ -197,7 +197,7 @@ export class RigoBrowser {
   }
 
   async safeGoto(url: string): Promise<void> {
-    if (!isAllowedRigoUrl(url)) throw new Error(`Navigation blocked by allowlist: ${new URL(url).origin}${new URL(url).pathname}`);
+    if (!isAllowedSushiUrl(url)) throw new Error(`Navigation blocked by allowlist: ${new URL(url).origin}${new URL(url).pathname}`);
     const page = await this.getPage();
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await this.settlePage(page);
@@ -273,7 +273,7 @@ export class RigoBrowser {
         const submit = scopedSubmit && await scopedSubmit.count() > 0 ? scopedSubmit : await pageSubmit.count() > 0 ? pageSubmit : textSubmit;
         if (await submit.count() > 0) {
           if (!(await submit.isEnabled())) {
-            throw new Error(`RigoHR showed a ${action} confirmation dialog, but its Submit button was disabled.`);
+            throw new Error(`Sushi showed a ${action} confirmation dialog, but its Submit button was disabled.`);
           }
           const beforeSubmit = await this.capture(`${evidenceLabel}-07-clock-confirmation-before-submit`);
           if (beforeSubmit) screenshots.push(beforeSubmit);
@@ -313,8 +313,8 @@ export class RigoBrowser {
         const text = `${await button.innerText().catch(() => '')} ${await button.getAttribute('aria-label').catch(() => '') || ''} ${await button.getAttribute('title').catch(() => '') || ''}`.trim();
         if (/^(close|dismiss|cancel|×|x)$/i.test(text) || /close|dismiss/i.test(text)) closeButtons.push(button);
       }
-      if (closeButtons.length === 0) throw new Error('An unexpected RigoHR modal is open and has no close control.');
-      if (closeButtons.length !== 1) throw new Error('An unexpected RigoHR modal has multiple possible close controls.');
+      if (closeButtons.length === 0) throw new Error('An unexpected Sushi modal is open and has no close control.');
+      if (closeButtons.length !== 1) throw new Error('An unexpected Sushi modal has multiple possible close controls.');
       const beforeClose = await this.capture(`${evidenceLabel}-modal-before-close`);
       if (beforeClose) screenshots.push(beforeClose);
       await this.settlePage(page);
@@ -336,9 +336,9 @@ export class RigoBrowser {
     if (isLoginPage) {
       const beforeEmail = await this.capture(`${evidenceLabel}-01-before-email`);
       if (beforeEmail) screenshots.push(beforeEmail);
-      const username = process.env.RIGOHR_USERNAME;
-      const password = process.env.RIGOHR_PASSWORD;
-      if (!username || !password) throw new Error('RIGOHR_USERNAME and RIGOHR_PASSWORD are required.');
+      const username = process.env.SUSHI_USERNAME;
+      const password = process.env.SUSHI_PASSWORD;
+      if (!username || !password) throw new Error('SUSHI_USERNAME and SUSHI_PASSWORD are required.');
       if (await passwordBox.count() === 0) {
         const email = page.getByRole('textbox').first();
         await this.settlePage(page);
@@ -360,7 +360,7 @@ export class RigoBrowser {
       if (!(await this.waitForAttendanceHome(page)) && !(await this.isClockLanding(page))) {
         const pathname = new URL(page.url()).pathname;
         const passwordStillVisible = await passwordBox.isVisible().catch(() => false);
-        throw new Error(`RigoHR login did not complete; current page is ${pathname}${passwordStillVisible ? ' and the password step is still visible' : ''}.`);
+        throw new Error(`Sushi login did not complete; current page is ${pathname}${passwordStillVisible ? ' and the password step is still visible' : ''}.`);
       }
     }
     await this.dismissOptionalModal(page, evidenceLabel, screenshots);
@@ -374,7 +374,7 @@ export class RigoBrowser {
       await this.waitForPostLoginState(page);
       await this.settleAfterClick(page);
       if (!leftClockGate || !(await this.waitForAttendanceHome(page))) {
-        throw new Error(`RigoHR did not reach the attendance home after skipping the clock gate: ${new URL(page.url()).pathname}`);
+        throw new Error(`Sushi did not reach the attendance home after skipping the clock gate: ${new URL(page.url()).pathname}`);
       }
       const afterSkip = await this.capture(`${evidenceLabel}-04-after-skip-to-hr`);
       if (afterSkip) screenshots.push(afterSkip);
@@ -388,14 +388,14 @@ export class RigoBrowser {
         if (!action) {
           await this.safeGoto(`${APP_ORIGIN}/hr/employee`);
           if (!(await this.waitForAttendanceHome(page))) {
-            throw new Error(`Unexpected RigoHR state after attendance navigation: ${new URL(page.url()).pathname}`);
+            throw new Error(`Unexpected Sushi state after attendance navigation: ${new URL(page.url()).pathname}`);
           }
         } else {
-          throw new Error('RigoHR showed a clock landing page, but no usable clock control or skip-to-HR link was found.');
+          throw new Error('Sushi showed a clock landing page, but no usable clock control or skip-to-HR link was found.');
         }
       }
     }
-    if (!action && !(await this.waitForAttendanceHome(page))) throw new Error(`Unexpected RigoHR state after attendance navigation: ${new URL(page.url()).pathname}`);
+    if (!action && !(await this.waitForAttendanceHome(page))) throw new Error(`Unexpected Sushi state after attendance navigation: ${new URL(page.url()).pathname}`);
     await this.dismissOptionalModal(page, evidenceLabel, screenshots);
     const afterLogin = await this.capture(`${evidenceLabel}-05-home-before-action`);
     if (afterLogin) screenshots.push(afterLogin);
@@ -412,11 +412,11 @@ export class RigoBrowser {
       if (dashboard) screenshots.push(dashboard);
       const body = await page.locator('body').innerText();
       const heading = body.includes('My Time and Attendance') ? 'dashboard-attendance-present' : 'dashboard-attendance-missing';
-      const dateParts = new Intl.DateTimeFormat('en-US', { timeZone: process.env.RIGOHR_TIMEZONE || 'Asia/Kathmandu', day: 'numeric', weekday: 'short' }).format(new Date(`${date}T00:00:00+05:45`));
+      const dateParts = new Intl.DateTimeFormat('en-US', { timeZone: process.env.SUSHI_TIMEZONE || 'Asia/Kathmandu', day: 'numeric', weekday: 'short' }).format(new Date(`${date}T00:00:00+05:45`));
       const dayNumber = dateParts.match(/\d+/)?.[0];
       const weekday = dateParts.match(/(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/)?.[1];
       const row = await page.evaluate(readAttendanceDom, { day: Number(dayNumber), weekday: weekday || '' }).catch(error => {
-        throw new Error(`RigoHR attendance could not be read for ${date}: ${error.message}`);
+        throw new Error(`Sushi attendance could not be read for ${date}: ${error.message}`);
       });
       return { record: { date, checkIn: row.checkIn, checkOut: row.checkOut }, pageState: `${heading}; date-row-found`, url: page.url(), screenshots };
     } catch (error) {
@@ -446,7 +446,7 @@ export class RigoBrowser {
       const button = this.clockActionControl(page, action);
       await button.first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined);
       if (await button.count() !== 1 || !(await button.isVisible()) || !(await button.isEnabled())) {
-        throw new Error(`Expected enabled RigoHR ${action} control was not found.`);
+        throw new Error(`Expected enabled Sushi ${action} control was not found.`);
       }
       const beforeClick = await this.capture(`${evidenceLabel}-06-before-${action}`);
       if (beforeClick) screenshots.push(beforeClick);
@@ -465,12 +465,12 @@ export class RigoBrowser {
       const skipToHr = this.skipToHrControl(page);
       if (await skipToHr.count() > 0 && await skipToHr.isVisible().catch(() => false)) {
         if (!(await leaveClockGate(page))) {
-          throw new Error(`RigoHR did not leave the clock gate after ${action}: ${new URL(page.url()).pathname}`);
+          throw new Error(`Sushi did not leave the clock gate after ${action}: ${new URL(page.url()).pathname}`);
         }
         await this.settleAfterClick(page);
       }
       if (!(await this.waitForAttendanceHome(page))) {
-        throw new Error(`RigoHR did not return to the attendance home after ${action} refresh: ${new URL(page.url()).pathname}`);
+        throw new Error(`Sushi did not return to the attendance home after ${action} refresh: ${new URL(page.url()).pathname}`);
       }
       const afterRefresh = await this.capture(`${evidenceLabel}-08-after-refresh`);
       if (afterRefresh) screenshots.push(afterRefresh);
@@ -504,4 +504,4 @@ export class RigoBrowser {
   }
 }
 
-export const rigoBrowser = new RigoBrowser();
+export const sushiBrowser = new SushiBrowser();

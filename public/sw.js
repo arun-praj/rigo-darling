@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rigohr-shell-v1';
+const CACHE_NAME = 'sushi-shell-v1';
 const SHELL_ASSETS = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

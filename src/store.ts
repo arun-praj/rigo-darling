@@ -6,7 +6,7 @@ import { hashPassword } from './password.js';
 import type { AttendanceRecord, AuthUser, Config, DateOverride, LogEntry, PlannedAction, PersistedState, ScheduleException, ScheduleExceptionType, ScheduleRule, ScheduleTimeOverrides, UserRole } from './types.js';
 
 const dataDir = path.resolve('data');
-const databasePath = path.resolve(process.env.RIGOHR_DB_PATH || path.join(dataDir, 'rigohr.sqlite'));
+const databasePath = path.resolve(process.env.SUSHI_DB_PATH || path.join(dataDir, 'rigohr.sqlite'));
 
 export interface StoreOptions {
   dataDirectory?: string;
@@ -241,9 +241,9 @@ export class Store {
 
   private seedAdmin(): void {
     if (this.countUsers() > 0) return;
-    const email = (process.env.RIGO_ADMIN_USERNAME || 'arunkp1122@gmail.com').trim().toLowerCase();
-    const password = process.env.RIGO_ADMIN_PASSWORD;
-    if (!password) throw new Error('RIGO_ADMIN_PASSWORD is required to seed the first admin account.');
+    const email = (process.env.SUSHI_ADMIN_USERNAME || 'arunkp1122@gmail.com').trim().toLowerCase();
+    const password = process.env.SUSHI_ADMIN_PASSWORD;
+    if (!password) throw new Error('SUSHI_ADMIN_PASSWORD is required to seed the first admin account.');
     this.createUser({ id: `user_admin_${Date.now()}`, email, passwordHash: hashPassword(password), role: 'admin', createdAt: new Date().toISOString() });
   }
 

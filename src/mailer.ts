@@ -73,11 +73,11 @@ export function buildNotification(context: NotificationContext): { subject: stri
   const result = resultLabel(context);
   const observedIn = context.record?.checkIn || 'Not observed';
   const observedOut = context.record?.checkOut || 'Not observed';
-  const rigoUrl = configuredUrl('RIGOHR_URL', 'https://app.rigohr.com/hr');
+  const attendanceUrl = configuredUrl('SUSHI_URL', 'https://app.rigohr.com/hr');
   const projectUrl = configuredUrl('PROJECT_URL', 'http://localhost:4317');
-  const subject = `[RigoHR] ${result}: ${actionLabel} · ${context.date}`;
+  const subject = `[Sushi] ${result}: ${actionLabel} · ${context.date}`;
   const fields = [
-    `RigoHR website: ${rigoUrl}`,
+    `Sushi website: ${attendanceUrl}`,
     `Attendance project: ${projectUrl}`,
     `Result: ${result}`,
     `Action: ${actionLabel}`,
@@ -92,11 +92,11 @@ export function buildNotification(context: NotificationContext): { subject: stri
     `Details: ${context.message}`,
     context.errorCategory ? `Error category: ${context.errorCategory}` : '',
     context.observedPageState ? `Observed page state: ${context.observedPageState}` : '',
-    context.currentUrl ? `RigoHR page: ${context.currentUrl}` : '',
+    context.currentUrl ? `Sushi page: ${context.currentUrl}` : '',
     context.screenshotPaths?.length ? `Evidence: ${context.screenshotPaths.join(', ')}` : '',
   ].filter(Boolean);
-  const text = `RigoHR Attendance Notification\n\n${fields.join('\n')}`;
-  const html = `<h2>RigoHR Attendance · ${escapeHtml(result)}</h2><table>${fields.map((field) => { const separator = field.indexOf(':'); const key = separator > -1 ? field.slice(0, separator) : 'Details'; const value = separator > -1 ? field.slice(separator + 1).trim() : field; const content = key === 'RigoHR website' || key === 'Attendance project' ? `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>` : escapeHtml(value); return `<tr><th style="text-align:left;padding:5px 12px 5px 0">${escapeHtml(key)}</th><td style="padding:5px 0">${content}</td></tr>`; }).join('')}</table>`;
+  const text = `Sushi Attendance Notification\n\n${fields.join('\n')}`;
+  const html = `<h2>Sushi Attendance · ${escapeHtml(result)}</h2><table>${fields.map((field) => { const separator = field.indexOf(':'); const key = separator > -1 ? field.slice(0, separator) : 'Details'; const value = separator > -1 ? field.slice(separator + 1).trim() : field; const content = key === 'Sushi website' || key === 'Attendance project' ? `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>` : escapeHtml(value); return `<tr><th style="text-align:left;padding:5px 12px 5px 0">${escapeHtml(key)}</th><td style="padding:5px 0">${content}</td></tr>`; }).join('')}</table>`;
   return { subject, text, html };
 }
 
@@ -117,15 +117,15 @@ export async function sendTestEmail(recipientAddresses: string[] = []): Promise<
   if (!configured(recipientAddresses)) return { sent: false };
   const transport = createTransport();
   const to = recipientAddresses.map((recipient) => recipient.trim());
-  const rigoUrl = configuredUrl('RIGOHR_URL', 'https://app.rigohr.com/hr');
+  const attendanceUrl = configuredUrl('SUSHI_URL', 'https://app.rigohr.com/hr');
   const projectUrl = configuredUrl('PROJECT_URL', 'http://localhost:4317');
   await transport.sendMail({
     from: required('SMTP_FROM'),
     to,
     replyTo: process.env.SMTP_REPLY_TO || undefined,
-    subject: '[RigoHR] Test email · Attendance notifications',
-    text: `RigoHR Attendance test email\n\nRigoHR website: ${rigoUrl}\nAttendance project: ${projectUrl}\n\nThis confirms that attendance notifications can be delivered to: ${to.join(', ')}.\n\nNo attendance action was performed.`,
-    html: `<h2>RigoHR Attendance · Test email</h2><p><a href="${escapeHtml(rigoUrl)}">RigoHR website</a></p><p><a href="${escapeHtml(projectUrl)}">Attendance project</a></p><p>This confirms that attendance notifications can be delivered to:</p><p>${to.map(escapeHtml).join('<br>')}</p><p><strong>No attendance action was performed.</strong></p>`,
+    subject: '[Sushi] Test email · Attendance notifications',
+    text: `Sushi Attendance test email\n\nSushi website: ${attendanceUrl}\nAttendance project: ${projectUrl}\n\nThis confirms that attendance notifications can be delivered to: ${to.join(', ')}.\n\nNo attendance action was performed.`,
+    html: `<h2>Sushi Attendance · Test email</h2><p><a href="${escapeHtml(attendanceUrl)}">Sushi website</a></p><p><a href="${escapeHtml(projectUrl)}">Attendance project</a></p><p>This confirms that attendance notifications can be delivered to:</p><p>${to.map(escapeHtml).join('<br>')}</p><p><strong>No attendance action was performed.</strong></p>`,
   });
   return { sent: true, recipients: to };
 }

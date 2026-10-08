@@ -2,11 +2,11 @@
 set -eu
 
 display="${DISPLAY:-:99}"
-vnc_password="${RIGOHR_VNC_PASSWORD:-}"
+vnc_password="${SUSHI_VNC_PASSWORD:-}"
 vnc_password_file="/app/data/vnc.pass"
 
 if [ -z "$vnc_password" ]; then
-  echo "RIGOHR_VNC_PASSWORD must be set for Docker headful mode." >&2
+  echo "SUSHI_VNC_PASSWORD must be set for Docker headful mode." >&2
   exit 1
 fi
 
@@ -14,7 +14,7 @@ fi
 # shorter value so the browser desktop cannot accidentally be left weakly
 # protected by a typo or empty password.
 if [ "$(printf '%s' "$vnc_password" | wc -c)" -lt 8 ]; then
-  echo "RIGOHR_VNC_PASSWORD must contain at least 8 characters." >&2
+  echo "SUSHI_VNC_PASSWORD must contain at least 8 characters." >&2
   exit 1
 fi
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { hardPunchDecision, isScheduledExecutionTimeAllowed, reconcilePunchOutcome } from '../src/automation.js';
 
 describe('hard punch safety checks', () => {
-  it('blocks a second hard punch-in when RigoHR already has one', () => {
+  it('blocks a second hard punch-in when Sushi already has one', () => {
     const result = hardPunchDecision('check-in', { date: '2026-08-13', checkIn: '11:35a' });
     expect(result.state).toBe('skipped');
     expect(result.message).toMatch(/already recorded/);

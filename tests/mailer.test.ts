@@ -8,7 +8,7 @@ describe('attendance email notifications', () => {
     expect(message.text).toContain('Configured punch-in window: 12:30–13:45 Nepal Time');
     expect(message.text).toContain('Configured punch-out window: 22:00–23:00 Nepal Time');
     expect(message.text).toContain('Observed punch-in: 1:02p');
-    expect(message.text).toContain('RigoHR website: https://app.rigohr.com/hr');
+    expect(message.text).toContain('Sushi website: https://app.rigohr.com/hr');
     expect(message.text).toContain('Attendance project: http://localhost:4317');
     expect(message.html).toContain('href="https://app.rigohr.com/hr"');
     expect(message.html).toContain('href="http://localhost:4317"');
@@ -22,13 +22,13 @@ describe('attendance email notifications', () => {
   });
 
   it('labels duplicate punch prevention notices as skipped', () => {
-    const message = buildNotification({ action: 'check-in', state: 'skipped', date: '2026-08-13', scheduleSource: 'weekly thursday', targetWindow: { start: '12:30', end: '13:45' }, checkInWindow: { start: '12:30', end: '13:45' }, checkOutWindow: { start: '22:00', end: '23:00' }, minDurationMinutes: 540, maxDurationMinutes: 600, record: { date: '2026-08-13', checkIn: '11:35a' }, message: 'RigoHR already recorded punch-in at 11:35a; no punch-in was submitted.' });
+    const message = buildNotification({ action: 'check-in', state: 'skipped', date: '2026-08-13', scheduleSource: 'weekly thursday', targetWindow: { start: '12:30', end: '13:45' }, checkInWindow: { start: '12:30', end: '13:45' }, checkOutWindow: { start: '22:00', end: '23:00' }, minDurationMinutes: 540, maxDurationMinutes: 600, record: { date: '2026-08-13', checkIn: '11:35a' }, message: 'Sushi already recorded punch-in at 11:35a; no punch-in was submitted.' });
     expect(message.subject).toContain('SKIPPED');
     expect(message.text).toContain('no punch-in was submitted');
   });
 
   it('labels attendance preflight failures without implying a punch was attempted', () => {
-    const message = buildNotification({ action: 'check-in', state: 'failed', date: '2026-08-13', scheduleSource: 'weekly thursday', targetWindow: { start: '12:30', end: '13:45' }, checkInWindow: { start: '12:30', end: '13:45' }, checkOutWindow: { start: '22:00', end: '23:00' }, minDurationMinutes: 540, maxDurationMinutes: 600, message: 'RigoHR did not reach the attendance home.', errorCategory: 'attendance_preflight', observedPageState: 'Preflight failed; punch not submitted.' });
+    const message = buildNotification({ action: 'check-in', state: 'failed', date: '2026-08-13', scheduleSource: 'weekly thursday', targetWindow: { start: '12:30', end: '13:45' }, checkInWindow: { start: '12:30', end: '13:45' }, checkOutWindow: { start: '22:00', end: '23:00' }, minDurationMinutes: 540, maxDurationMinutes: 600, message: 'Sushi did not reach the attendance home.', errorCategory: 'attendance_preflight', observedPageState: 'Preflight failed; punch not submitted.' });
     expect(message.subject).toContain('PREFLIGHT FAILED — PUNCH NOT SUBMITTED');
     expect(message.text).toContain('Result: PREFLIGHT FAILED — PUNCH NOT SUBMITTED');
     expect(message.text).toContain('Error category: attendance_preflight');

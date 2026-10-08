@@ -27,14 +27,14 @@ export class InstanceLock {
         if (!(error && typeof error === 'object' && 'code' in error && (error as NodeJS.ErrnoException).code === 'EEXIST')) throw error;
         const owner = Number.parseInt(fs.readFileSync(this.lockPath, 'utf8').trim(), 10);
         if (Number.isInteger(owner) && owner > 0 && processIsAlive(owner)) {
-          throw new Error(`Another RigoHR Attendance Assistant process is already running (PID ${owner}).`);
+          throw new Error(`Another Sushi Attendance Assistant process is already running (PID ${owner}).`);
         }
         try { fs.unlinkSync(this.lockPath); } catch (unlinkError) {
           if (!(unlinkError && typeof unlinkError === 'object' && 'code' in unlinkError && (unlinkError as NodeJS.ErrnoException).code === 'ENOENT')) throw unlinkError;
         }
       }
     }
-    throw new Error('Could not acquire the RigoHR Attendance Assistant instance lock.');
+    throw new Error('Could not acquire the Sushi Attendance Assistant instance lock.');
   }
 
   release(): void {

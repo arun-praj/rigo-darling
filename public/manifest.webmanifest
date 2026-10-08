@@ -1,7 +1,7 @@
 {
-  "name": "RigoHR Attendance",
-  "short_name": "RigoHR",
-  "description": "Attendance scheduling and verification for RigoHR.",
+  "name": "Sushi Attendance",
+  "short_name": "Sushi",
+  "description": "Attendance scheduling and verification for Sushi.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

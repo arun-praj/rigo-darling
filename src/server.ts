@@ -8,7 +8,7 @@ import { makeId, store } from './store.js';
 import { evidenceStore } from './evidence.js';
 import { isValidEmail, sendTestEmail } from './mailer.js';
 import { createUser, currentUser, login, logout, requireAdmin, requireAuth } from './auth.js';
-import { rigoBrowser } from './browser.js';
+import { sushiBrowser } from './browser.js';
 import { InstanceLock } from './instance-lock.js';
 import type { ActionType, Config, DateOverride, ScheduleException, ScheduleExceptionType, UserRole } from './types.js';
 
@@ -258,12 +258,12 @@ app.post('/api/attendance/check-live', async (_req, res) => {
   const checkedAt = new Date();
   const date = localParts(checkedAt, store.config.timezone).date;
   try {
-    const observed = await rigoBrowser.readAttendance(date, `manual-live-attendance-${date}`);
+    const observed = await sushiBrowser.readAttendance(date, `manual-live-attendance-${date}`);
     if (observed.record) store.upsertAttendance(observed.record);
     const storedRecord = store.getAttendance(date);
     const punchIn = observed.record?.checkIn;
     const punchOut = observed.record?.checkOut;
-    const message = `Live RigoHR attendance checked and stored in SQLite: punch-in ${punchIn || 'not recorded'}, punch-out ${punchOut || 'not recorded'}.`;
+    const message = `Live Sushi attendance checked and stored in SQLite: punch-in ${punchIn || 'not recorded'}, punch-out ${punchOut || 'not recorded'}.`;
     store.addLog({
       id: makeId('log'), timestamp: checkedAt.toISOString(), date, status: 'info', message,
       url: observed.url, observedPageState: observed.pageState, observedCheckIn: punchIn,
@@ -272,9 +272,9 @@ app.post('/api/attendance/check-live', async (_req, res) => {
     res.json({ date, checkedAt: checkedAt.toISOString(), record: storedRecord || {}, stored: true, storedAt: storedRecord?.observedAt, pageState: observed.pageState });
   } catch (error) {
     const message = safeError(error);
-    const failureScreenshots = rigoBrowser.failureEvidenceFrom(error);
-    store.addLog({ id: makeId('log'), timestamp: checkedAt.toISOString(), date, status: 'failed', errorCategory: 'live_attendance_check', message: `Live RigoHR attendance check failed: ${message}`, screenshotPath: failureScreenshots[0]?.path, screenshots: failureScreenshots.length ? failureScreenshots : undefined });
-    res.status(502).json({ error: 'RigoHR attendance could not be checked.', detail: message });
+    const failureScreenshots = sushiBrowser.failureEvidenceFrom(error);
+    store.addLog({ id: makeId('log'), timestamp: checkedAt.toISOString(), date, status: 'failed', errorCategory: 'live_attendance_check', message: `Live Sushi attendance check failed: ${message}`, screenshotPath: failureScreenshots[0]?.path, screenshots: failureScreenshots.length ? failureScreenshots : undefined });
+    res.status(502).json({ error: 'Sushi attendance could not be checked.', detail: message });
   }
 });
 
@@ -351,11 +351,11 @@ app.post('/api/actions/:id/cancel', (req, res) => {
 
 app.use((_req, res) => res.sendFile(path.resolve('public/index.html')));
 
-const instanceLock = new InstanceLock(path.resolve(process.env.RIGOHR_INSTANCE_LOCK || path.join('data', 'rigohr-attendance.lock')));
+const instanceLock = new InstanceLock(path.resolve(process.env.SUSHI_INSTANCE_LOCK || path.join('data', 'rigohr-attendance.lock')));
 instanceLock.acquire();
 
 const server = app.listen(port, host, () => {
-  console.log(`RigoHR Attendance Assistant listening at http://${host}:${port}`);
+  console.log(`Sushi Attendance Assistant listening at http://${host}:${port}`);
   schedulerTimer = startScheduler();
 });
 
@@ -367,7 +367,7 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
   if (schedulerTimer) clearInterval(schedulerTimer);
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  await rigoBrowser.close().catch(() => undefined);
+  await sushiBrowser.close().catch(() => undefined);
   store.close();
   instanceLock.release();
   process.exit(0);
